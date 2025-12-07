@@ -1,0 +1,4 @@
+# Ignore Terraform runtime files and caches
+.terraform/
+*.tfstate
+*.tfstate.*
