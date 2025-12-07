@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h2>🏆 실시간 랭킹 (TOP 10)</h2>
+    <a href="/dashboard">⬅ 돌아가기</a>
+    <hr>
+    <ol>
+        {% for rank in ranks %}
+            <li><b>{{ rank.username }}</b> : {{ rank.total_dist }} km</li>
+        {% endfor %}
+    </ol>
+    <p>※ 현재는 DB 집계지만, 곧 Redis로 가속화될 예정입니다.</p>
+</body>
+</html>

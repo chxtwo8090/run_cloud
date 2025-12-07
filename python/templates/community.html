@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h2>💬 러너 게시판</h2>
+    <a href="/dashboard">⬅ 돌아가기</a>
+    <hr>
+    <form method="post">
+        할 말: <input type="text" name="content" required>
+        (이미지 업로드 기능은 S3 연동 후 추가됨)
+        <button type="submit">글쓰기</button>
+    </form>
+    <hr>
+    {% for post in posts %}
+        <div style="border:1px solid #ccc; margin:10px; padding:10px;">
+            <b>{{ post.username }}</b>: {{ post.content }}<br>
+            <img src="{{ post.image_url }}" width="100">
+        </div>
+    {% endfor %}
+</body>
+</html>
