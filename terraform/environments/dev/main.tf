@@ -1,0 +1,26 @@
+# 1. 테라폼 설정 및 Provider 지정
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+# 찬규님! 여기가 바로 Provider가 들어가는 곳입니다.
+provider "aws" {
+  region = "ap-northeast-2"  # 서울 리전
+}
+
+# 2. 우리가 만든 네트워크 모듈 가져오기 (Module Call)
+module "network" {
+  source = "../../modules/network"  # 모듈 파일이 있는 상대 경로
+
+  # 모듈에 정의된 변수(variables.tf)들에 값을 채워줍니다.
+  project_name         = "run-cloud"
+  vpc_cidr             = "10.0.0.0/16"
+  public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+  private_subnet_cidrs = ["10.0.10.0/24", "10.0.20.0/24"]
+  availability_zones   = ["ap-northeast-2a", "ap-northeast-2c"]
+}
