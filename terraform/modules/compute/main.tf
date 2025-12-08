@@ -36,6 +36,10 @@ resource "aws_instance" "bastion" {
   key_name                    = aws_key_pair.kp.key_name
   associate_public_ip_address = true # 공인 IP 자동 할당
 
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   tags = {
     Name = "${var.project_name}-bastion"
   }
