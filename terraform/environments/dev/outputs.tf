@@ -26,3 +26,7 @@ output "bastion_ssh_command" {
 output "app_server_ip" {
   value = module.compute.app_private_ip
 }
+
+output "ecr_repository_url" {
+  value = module.ecr.repository_url
+}

@@ -51,3 +51,8 @@ module "compute" {
   sg_bastion_id = module.security.sg_bastion_id
   sg_app_id     = module.security.sg_app_id
 }
+
+module "ecr" {
+  source = "../../modules/ecr"
+  project_name = "run-cloud"
+}
