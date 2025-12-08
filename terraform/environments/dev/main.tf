@@ -24,3 +24,16 @@ module "network" {
   private_subnet_cidrs = ["10.0.10.0/24", "10.0.20.0/24"]
   availability_zones   = ["ap-northeast-2a", "ap-northeast-2c"]
 }
+
+module "security" {
+  source = "../../modules/security"
+
+  project_name = "run-cloud"
+  
+  # Network 모듈이 만든 VPC ID를 그대로 물려줍니다 (의존성)
+  vpc_id       = module.network.vpc_id
+  
+  # [중요] 찬규님의 공인 IP 뒤에 /32를 꼭 붙이세요!
+  # 예: "221.10.5.123/32"
+  admin_ip     = "61.108.4.50/32" # FIXME: 실제 본인 IP로 바꾸세요! (보안상 필수)
+}
