@@ -23,9 +23,9 @@ output "bastion_ssh_command" {
   value       = "ssh -i run-cloud-key.pem ec2-user@${module.compute.bastion_public_ip}"
 }
 
-output "app_server_ip" {
-  value = module.compute.app_private_ip
-}
+# output "app_server_ip" {
+#   value = module.compute.app_private_ip
+# }
 
 output "ecr_repository_url" {
   value = module.ecr.repository_url

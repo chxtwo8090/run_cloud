@@ -94,7 +94,7 @@ resource "aws_launch_template" "app" {
   name = "${var.project_name}-template"
 
   image_id      = data.aws_ami.amazon_linux_2023.id
-  instance_type = "t2.micro"
+  instance_type = "t3.micro"
   key_name      = aws_key_pair.kp.key_name
 
   # 네트워크 설정 (보안그룹 연결)
@@ -140,8 +140,8 @@ resource "aws_autoscaling_group" "app" {
   
   # ASG 설정: 최소 1대, 최대 3대, 평소 2대 유지
   min_size         = 1
-  max_size         = 3
-  desired_capacity = 2
+  max_size         = 2
+  desired_capacity = 1
 
   # 사용할 템플릿 지정
   launch_template {
