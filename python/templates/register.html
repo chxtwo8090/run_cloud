@@ -53,4 +53,66 @@
             padding: 1.5rem;
             background-color: #f8f9fa;
             border-bottom-left-radius: 10px;
-            border-bottom-right-radius: 10
+            border-bottom-right-radius: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .footer-link a {
+            text-decoration: none;
+            color: #007bff;
+        }
+        
+        .footer-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <div class="card-header border-0">
+            <h3 class="fw-light text-secondary">Create Account</h3>
+        </div>
+        
+        <div class="card-body">
+            <form method="POST" action="/register">
+                <div class="row mb-3">
+                    <div class="col-md-6 mb-3 mb-md-0">
+                        <label class="form-label small text-muted">First Name</label>
+                        <input type="text" class="form-control" placeholder="Enter first name">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Last Name</label>
+                        <input type="text" class="form-control" placeholder="Enter last name">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Email</label>
+                    <input type="email" class="form-control" name="username" placeholder="Enter email address" required>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-6 mb-3 mb-md-0">
+                        <label class="form-label small text-muted">Password</label>
+                        <input type="password" class="form-control" name="password" placeholder="Enter password" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Confirm Password</label>
+                        <input type="password" class="form-control" placeholder="Confirm password">
+                    </div>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary">Create Account</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="footer-link">
+            <a href="/">Have an account? Go to login</a>
+        </div>
+    </div>
+
+</body>
+</html>
