@@ -54,6 +54,12 @@ module "compute" {
   # [추가] 새로 생긴 변수들 전달
   ecr_repository_url = module.ecr.repository_url # ECR 모듈에서 받아옴
   target_group_arn   = module.alb.target_group_arn # ALB 모듈에서 받아옴
+
+  # [추가] Database 모듈에서 나온 정보 전달
+  db_endpoint = module.database.db_endpoint
+  db_name     = "runcloud_db"
+  db_username = "admin"
+  db_password = "mypassword1234!" # 변수 처리 권장하지만 실습용으론 문자열
 }
 
 module "ecr" {

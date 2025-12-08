@@ -117,11 +117,16 @@ resource "aws_launch_template" "app" {
               # ec2-user도 도커를 쓸 수 있게 권한 부여
               usermod -aG docker ec2-user
 
-              # ECR 로그인 (IAM Role 덕분에 가능)
+             # ECR 로그인
               aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin ${var.ecr_repository_url}
 
-              # 이미지 다운로드 & 컨테이너 실행 (포트 5000)
-              docker run -d -p 5000:5000 --restart always ${var.ecr_repository_url}:v1
+              # [수정] 환경변수 주입 (-e) 및 이미지 버전 변경 (:v2)
+              docker run -d -p 5000:5000 \
+                -e DB_HOST="${replace(var.db_endpoint, ":3306", "")}" \
+                -e DB_NAME="${var.db_name}" \
+                -e DB_USER="${var.db_username}" \
+                -e DB_PASSWORD="${var.db_password}" \
+                --restart always ${var.ecr_repository_url}:v2
               EOF
   )
 
@@ -158,3 +163,4 @@ resource "aws_autoscaling_group" "app" {
     propagate_at_launch = true
   }
 }
+
