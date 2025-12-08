@@ -55,6 +55,37 @@ try:
 except Exception as e:
     print(f"DB 초기화 실패 (접속 정보 확인 필요): {e}")
 
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        # HTML 폼에서 name="username"과 name="password"로 보낸 값을 받음
+        username = request.form['username']
+        password = request.form['password']
+        
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cursor:
+                # 1. 이미 있는 회원인지 확인
+                cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
+                existing_user = cursor.fetchone()
+                
+                if existing_user:
+                    return "이미 존재하는 이메일(아이디)입니다! <a href='/register'>다시 시도</a>"
+                
+                # 2. 없으면 회원가입 진행
+                cursor.execute('INSERT INTO users (username, password) VALUES (%s, %s)', (username, password))
+            conn.commit()
+        except Exception as e:
+            return f"회원가입 에러: {e}"
+        finally:
+            conn.close()
+            
+        # 가입 성공하면 로그인 페이지로 이동
+        return redirect(url_for('login'))
+        
+    # GET 요청이면 회원가입 화면(HTML) 보여줌
+    return render_template('register.html')
+
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
