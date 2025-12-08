@@ -37,3 +37,17 @@ module "security" {
   # 예: "221.10.5.123/32"
   admin_ip     = "61.108.4.50/32" # FIXME: 실제 본인 IP로 바꾸세요! (보안상 필수)
 }
+
+module "compute" {
+  source = "../../modules/compute"
+
+  project_name = "run-cloud"
+
+  # [중요] 서브넷 리스트(List) 중에서 0번째(첫 번째) 서브넷을 골라서 전달
+  public_subnet_id  = module.network.public_subnets[0]
+  private_subnet_id = module.network.private_subnet_ids[0]
+
+  # Security 모듈에서 만든 보안 그룹 ID 전달
+  sg_bastion_id = module.security.sg_bastion_id
+  sg_app_id     = module.security.sg_app_id
+}
