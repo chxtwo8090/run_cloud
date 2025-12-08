@@ -44,7 +44,7 @@ module "compute" {
   project_name = "run-cloud"
 
   # [중요] 서브넷 리스트(List) 중에서 0번째(첫 번째) 서브넷을 골라서 전달
-  public_subnet_id  = module.network.public_subnets[0]
+  public_subnet_id  = module.network.public_subnet_ids[0]
   private_subnet_id = module.network.private_subnet_ids[0]
 
   # Security 모듈에서 만든 보안 그룹 ID 전달
