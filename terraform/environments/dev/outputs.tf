@@ -35,3 +35,7 @@ output "alb_url" {
   description = "서비스 접속 주소"
   value       = "http://${module.alb.alb_dns_name}"
 }
+
+output "rds_endpoint" {
+  value = module.database.db_endpoint
+}

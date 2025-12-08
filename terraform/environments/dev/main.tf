@@ -70,3 +70,14 @@ module "alb" {
   sg_alb_id         = module.security.sg_alb_id
 }
 
+module "database" {
+  source = "../../modules/database"
+
+  project_name       = "run-cloud"
+  private_subnet_ids = module.network.private_subnet_ids
+  sg_db_id           = module.security.sg_db_id
+  
+  # 실무에서는 이렇게 비밀번호를 코드에 적으면 안 되지만(Secrets Manager 사용), 
+  # 포트폴리오/실습용으로는 간단하게 문자열로 넣겠습니다.
+  db_password        = "mypassword1234!" 
+}

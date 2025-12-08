@@ -1,19 +1,198 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Run-Cloud Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #f8f9fc; }
+        .sidebar { min-height: 100vh; background-color: #4e73df; background-image: linear-gradient(180deg,#4e73df 10%,#224abe 100%); color: white; }
+        .sidebar a { color: rgba(255,255,255,.8); text-decoration: none; padding: 15px; display: block; }
+        .sidebar a:hover { color: #fff; background: rgba(255,255,255,.1); }
+        .card { border: none; box-shadow: 0 .15rem 1.75rem 0 rgba(58,59,69,.15); }
+        .text-primary-custom { color: #4e73df!important; }
+        .text-success-custom { color: #1cc88a!important; }
+        .text-info-custom { color: #36b9cc!important; }
+        .text-warning-custom { color: #f6c23e!important; }
+    </style>
+</head>
 <body>
-    <h2>🏃‍♂️ {{ username }}님의 러닝 기록</h2>
-    <a href="/ranking">🏆 랭킹 보기</a> | <a href="/community">💬 커뮤니티</a> | <a href="/logout">로그아웃</a>
-    <hr>
-    <form method="post">
-        거리(km): <input type="number" step="0.1" name="distance" required>
-        시간(분): <input type="number" name="duration" required>
-        <button type="submit">기록 저장</button>
-    </form>
-    <h3>내 기록 목록</h3>
-    <ul>
-        {% for run in runs %}
-            <li>{{ run.date }} - {{ run.distance }}km ({{ run.duration }}분)</li>
-        {% endfor %}
-    </ul>
+
+<div class="d-flex">
+    <div class="sidebar d-flex flex-column p-3" style="width: 250px;">
+        <a href="/dashboard" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
+            <i class="fa-solid fa-cloud fa-2x me-2"></i>
+            <span class="fs-4 fw-bold">Run-Cloud</span>
+        </a>
+        <hr>
+        <ul class="nav nav-pills flex-column mb-auto">
+            <li><a href="/dashboard" class="fw-bold"><i class="fa-solid fa-gauge me-2"></i> 대시보드</a></li>
+            <li><a href="/ranking"><i class="fa-solid fa-trophy me-2"></i> 랭킹 보기</a></li>
+            <li><a href="/community"><i class="fa-solid fa-comments me-2"></i> 커뮤니티</a></li>
+        </ul>
+        <hr>
+        <a href="/logout"><i class="fa-solid fa-sign-out-alt me-2"></i> 로그아웃</a>
+    </div>
+
+    <div class="container-fluid p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3 mb-0 text-gray-800">Dashboard</h1>
+            <span class="fs-5">환영합니다, <strong>{{ username }}</strong>님! 🏃‍♂️</span>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card h-100 py-2 border-start border-4 border-primary">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs fw-bold text-primary text-uppercase mb-1">총 러닝 횟수</div>
+                                <div class="h5 mb-0 fw-bold text-gray-800">{{ runs|length }} 회</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-running fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card h-100 py-2 border-start border-4 border-success">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs fw-bold text-success text-uppercase mb-1">최근 기록</div>
+                                <div class="h5 mb-0 fw-bold text-gray-800">
+                                    {% if runs %}
+                                        {{ runs[0]['distance'] }} km
+                                    {% else %}
+                                        0 km
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-road fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card h-100 py-2 border-start border-4 border-info">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs fw-bold text-info text-uppercase mb-1">이번 달 목표</div>
+                                <div class="row no-gutters align-items-center">
+                                    <div class="col-auto">
+                                        <div class="h5 mb-0 mr-3 fw-bold text-gray-800">50%</div>
+                                    </div>
+                                    <div class="col">
+                                        <div class="progress progress-sm mr-2">
+                                            <div class="progress-bar bg-info" role="progressbar" style="width: 50%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-clipboard-list fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card h-100 py-2 border-start border-4 border-warning">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs fw-bold text-warning text-uppercase mb-1">예상 소모 칼로리</div>
+                                <div class="h5 mb-0 fw-bold text-gray-800">1,200 kcal</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-fire fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-4 mb-4">
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 fw-bold text-primary">오늘의 러닝 기록하기</h6>
+                    </div>
+                    <div class="card-body">
+                        <form method="post">
+                            <div class="mb-3">
+                                <label class="form-label">달린 거리 (km)</label>
+                                <input type="number" step="0.1" name="distance" class="form-control" required placeholder="예: 5.2">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">달린 시간 (분)</label>
+                                <input type="number" name="duration" class="form-control" required placeholder="예: 30">
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-save me-2"></i> 기록 저장
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-8 mb-4">
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 fw-bold text-primary">내 러닝 히스토리</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover" width="100%" cellspacing="0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>날짜</th>
+                                        <th>거리 (km)</th>
+                                        <th>시간 (분)</th>
+                                        <th>페이스 (분/km)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for run in runs %}
+                                    <tr>
+                                        <td>{{ run.date }}</td>
+                                        <td>{{ run.distance }} km</td>
+                                        <td>{{ run.duration }} 분</td>
+                                        <td>
+                                            {% if run.distance > 0 %}
+                                                {{ (run.duration / run.distance) | round(2) }}
+                                            {% else %}
+                                                0
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="4" class="text-center">아직 기록이 없습니다. 첫 러닝을 시작해보세요!</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
