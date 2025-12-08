@@ -50,6 +50,10 @@ module "compute" {
   # Security 모듈에서 만든 보안 그룹 ID 전달
   sg_bastion_id = module.security.sg_bastion_id
   sg_app_id     = module.security.sg_app_id
+
+  # [추가] 새로 생긴 변수들 전달
+  ecr_repository_url = module.ecr.repository_url # ECR 모듈에서 받아옴
+  target_group_arn   = module.alb.target_group_arn # ALB 모듈에서 받아옴
 }
 
 module "ecr" {
@@ -65,3 +69,4 @@ module "alb" {
   public_subnet_ids = module.network.public_subnet_ids # Public Subnet에 둬야 합니다!
   sg_alb_id         = module.security.sg_alb_id
 }
+

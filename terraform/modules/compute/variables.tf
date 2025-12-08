@@ -19,3 +19,13 @@ variable "sg_app_id" {
   description = "App Server용 보안 그룹 ID"
   type        = string
 }
+
+variable "ecr_repository_url" {
+  description = "도커 이미지를 가져올 ECR 주소"
+  type        = string
+}
+
+variable "target_group_arn" {
+  description = "ASG가 연결될 ALB 타겟 그룹 ID"
+  type        = string
+}
