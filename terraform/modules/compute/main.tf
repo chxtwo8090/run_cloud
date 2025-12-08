@@ -107,26 +107,26 @@ resource "aws_launch_template" "app" {
 
   # [핵심] 서버가 켜지자마자 실행할 명령어 (User Data)
   # 1. 도커 설치 -> 2. 도커 실행 -> 3. ECR 로그인 -> 4. 이미지 다운 & 실행
-  user_data = base64encode(<<-EOF
+user_data = base64encode(<<-EOF
               #!/bin/bash
               dnf update -y
               dnf install -y docker
               systemctl start docker
               systemctl enable docker
-              
-              # ec2-user도 도커를 쓸 수 있게 권한 부여
               usermod -aG docker ec2-user
 
-             # ECR 로그인
+              # ECR 로그인
               aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin ${var.ecr_repository_url}
 
-              # [수정] 환경변수 주입 (-e) 및 이미지 버전 변경 (:v2)
+              # [중요] docker run은 딱 한 번만 실행해야 합니다!
+              # 모든 환경변수(-e)를 이 명령어 하나에 다 넣으세요.
               docker run -d -p 5000:5000 \
                 -e DB_HOST="${replace(var.db_endpoint, ":3306", "")}" \
                 -e DB_NAME="${var.db_name}" \
                 -e DB_USER="${var.db_username}" \
                 -e DB_PASSWORD="${var.db_password}" \
-                --restart always ${var.ecr_repository_url}:v2
+                --restart always \
+                ${var.ecr_repository_url}:v2
               EOF
   )
 
