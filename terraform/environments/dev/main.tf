@@ -56,3 +56,12 @@ module "ecr" {
   source = "../../modules/ecr"
   project_name = "run-cloud"
 }
+
+module "alb" {
+  source = "../../modules/alb"
+
+  project_name      = "run-cloud"
+  vpc_id            = module.network.vpc_id
+  public_subnet_ids = module.network.public_subnet_ids # Public Subnet에 둬야 합니다!
+  sg_alb_id         = module.security.sg_alb_id
+}

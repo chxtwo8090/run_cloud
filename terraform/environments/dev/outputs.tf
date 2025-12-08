@@ -30,3 +30,8 @@ output "app_server_ip" {
 output "ecr_repository_url" {
   value = module.ecr.repository_url
 }
+
+output "alb_url" {
+  description = "서비스 접속 주소"
+  value       = "http://${module.alb.alb_dns_name}"
+}
