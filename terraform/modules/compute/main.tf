@@ -140,7 +140,7 @@ user_data = base64encode(<<-EOF
 
               # ECR 로그인
               aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin ${var.ecr_repository_url}
-
+              docker pull ${var.ecr_repository_url}:latest
               # [중요] docker run은 딱 한 번만 실행해야 합니다!
               # 모든 환경변수(-e)를 이 명령어 하나에 다 넣으세요.
               docker run -d -p 5000:5000 \
@@ -149,7 +149,7 @@ user_data = base64encode(<<-EOF
                 -e DB_USER="${var.db_username}" \
                 -e DB_PASSWORD="${var.db_password}" \
                 --restart always \
-                ${var.ecr_repository_url}:v2
+                ${var.ecr_repository_url}:latest
               EOF
   )
 
