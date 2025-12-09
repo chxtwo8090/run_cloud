@@ -170,7 +170,7 @@ resource "aws_autoscaling_group" "app" {
   
   # ASG 설정: 최소 1대, 최대 3대, 평소 2대 유지
   min_size         = 1
-  max_size         = 2
+  max_size         = 1
   desired_capacity = 1
 
   # 사용할 템플릿 지정
