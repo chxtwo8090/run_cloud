@@ -75,6 +75,29 @@ resource "aws_iam_role" "ec2_role" {
   })
 }
 
+# [추가] S3 업로드 권한 정책 생성
+resource "aws_iam_policy" "s3_upload" {
+  name        = "${var.project_name}-s3-upload-policy"
+  description = "Allow EC2 to upload images to S3"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
+        Resource = "${var.s3_bucket_arn}/*"
+      }
+    ]
+  })
+}
+
+# [추가] 정책을 기존 EC2 역할에 연결
+resource "aws_iam_role_policy_attachment" "s3_attach" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = aws_iam_policy.s3_upload.arn
+}
+
 # ECR 읽기 권한(ReadOnly) 정책을 역할에 붙임
 resource "aws_iam_role_policy_attachment" "ecr_readonly" {
   role       = aws_iam_role.ec2_role.name

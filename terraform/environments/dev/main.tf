@@ -38,6 +38,11 @@ module "security" {
   admin_ip     = "61.108.4.50/32" # FIXME: 실제 본인 IP로 바꾸세요! (보안상 필수)
 }
 
+module "storage" {
+  source       = "../../modules/storage"
+  project_name = "run-cloud"
+}
+
 module "compute" {
   source = "../../modules/compute"
 
@@ -60,6 +65,11 @@ module "compute" {
   db_name     = "runcloud_db"
   db_username = "admin"
   db_password = "mypassword1234!" # 변수 처리 권장하지만 실습용으론 문자열
+
+  # [추가] 앱이 알아야 할 S3/CDN 정보 전달
+  s3_bucket_name = module.storage.s3_bucket_name
+  cdn_domain     = module.storage.cloudfront_domain_name
+  s3_bucket_arn  = module.storage.s3_bucket_arn # 권한 설정용
 }
 
 module "ecr" {
