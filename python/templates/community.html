@@ -4,10 +4,18 @@
     <h2>💬 러너 게시판</h2>
     <a href="/dashboard">⬅ 돌아가기</a>
     <hr>
-    <form method="post">
-        할 말: <input type="text" name="content" required>
-        (이미지 업로드 기능은 S3 연동 후 추가됨)
-        <button type="submit">글쓰기</button>
+    <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+            <label class="form-label">할 말</label>
+            <input type="text" name="content" class="form-control" required>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">사진 업로드</label>
+            <input type="file" name="image" class="form-control" accept="image/*">
+        </div>
+
+        <button type="submit" class="btn btn-primary">글쓰기</button>
     </form>
     <hr>
     {% for post in posts %}

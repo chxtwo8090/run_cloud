@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, session, url_for
-import pymysql
+import pymysql,boto3
 import datetime
 import os
 
@@ -11,6 +11,12 @@ DB_HOST = os.environ.get('DB_HOST')
 DB_USER = os.environ.get('DB_USER')
 DB_PASSWORD = os.environ.get('DB_PASSWORD')
 DB_NAME = os.environ.get('DB_NAME', 'runcloud_db')
+S3_BUCKET = os.environ.get('S3_BUCKET_NAME')
+CDN_DOMAIN = os.environ.get('CDN_DOMAIN')
+AWS_REGION = 'ap-northeast-2'
+
+# S3 클라이언트 생성 (IAM Role 덕분에 키/비밀번호 없이 권한 획득!)
+s3_client = boto3.client('s3', region_name=AWS_REGION)
 
 def get_db_connection():
     # 1. 환경변수에 DB 주소가 있으면 -> AWS RDS (MySQL) 접속
@@ -37,7 +43,10 @@ def init_db():
     with conn.cursor() as cursor:
         # 사용자 테이블
         cursor.execute('''CREATE TABLE IF NOT EXISTS users 
-                        (id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255), password VARCHAR(255))''')
+                        (id INT AUTO_INCREMENT PRIMARY KEY,
+                        username VARCHAR(255),
+                        password VARCHAR(255),
+                       email VARCHAR(255))''')
         # 러닝 기록 테이블
         cursor.execute('''CREATE TABLE IF NOT EXISTS runs 
                         (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
@@ -58,32 +67,35 @@ except Exception as e:
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        # HTML 폼에서 name="username"과 name="password"로 보낸 값을 받음
-        username = request.form['username']
-        password = request.form['password']
+        # [수정] HTML 폼에서 보내준 값들을 각각 받습니다.
+        username = request.form['username']  # ID 입력값
+        email = request.form['email']        # 이메일 입력값
+        password = request.form['password']  # 비밀번호 입력값
         
         conn = get_db_connection()
         try:
             with conn.cursor() as cursor:
-                # 1. 이미 있는 회원인지 확인
+                # 1. ID 중복 확인
                 cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
-                existing_user = cursor.fetchone()
+                if cursor.fetchone():
+                    return "이미 존재하는 ID입니다! <a href='/register'>다시 시도</a>"
                 
-                if existing_user:
-                    return "이미 존재하는 이메일(아이디)입니다! <a href='/register'>다시 시도</a>"
-                
-                # 2. 없으면 회원가입 진행
-                cursor.execute('INSERT INTO users (username, password) VALUES (%s, %s)', (username, password))
+                # [추가] 이메일 중복 확인 (선택사항)
+                cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
+                if cursor.fetchone():
+                    return "이미 가입된 이메일입니다! <a href='/register'>다시 시도</a>"
+
+                # 2. DB에 저장 (ID, 비밀번호, 이메일 모두 저장)
+                cursor.execute('INSERT INTO users (username, password, email) VALUES (%s, %s, %s)', 
+                               (username, password, email))
             conn.commit()
         except Exception as e:
             return f"회원가입 에러: {e}"
         finally:
             conn.close()
             
-        # 가입 성공하면 로그인 페이지로 이동
         return redirect(url_for('login'))
         
-    # GET 요청이면 회원가입 화면(HTML) 보여줌
     return render_template('register.html')
 
 @app.route('/', methods=['GET', 'POST'])
@@ -160,7 +172,38 @@ def community():
     try:
         if request.method == 'POST':
             content = request.form['content']
-            image_url = "https://via.placeholder.com/150"
+            image_file = request.files['image'] # HTML에서 file 타입으로 보낸 것 받기
+            
+            image_url = "" # 이미지가 없을 경우 빈 값
+
+            # 사용자가 이미지를 올렸다면?
+            if image_file and image_file.filename != '':
+                # 1. 파일 이름 안전하게 변경 (랜덤 UUID 사용)
+                ext = image_file.filename.split('.')[-1]
+                filename = f"{uuid.uuid4()}.{ext}"
+                
+                try:
+                    # 2. S3 버킷에 업로드
+                    # (ContentType을 설정해야 브라우저에서 바로 보입니다)
+                    s3_client.upload_fileobj(
+                        image_file,
+                        S3_BUCKET,
+                        filename,
+                        ExtraArgs={'ContentType': image_file.content_type}
+                    )
+                    
+                    # 3. 이미지 주소 생성 (CDN 도메인 사용)
+                    # CDN 도메인이 없으면 S3 기본 주소 사용 (비상용)
+                    if CDN_DOMAIN:
+                        image_url = f"https://{CDN_DOMAIN}/{filename}"
+                    else:
+                        image_url = f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{filename}"
+                        
+                except Exception as e:
+                    print(f"S3 업로드 실패: {e}")
+                    return f"업로드 에러 발생: {e}"
+
+            # DB에 저장 (이미지 URL 포함)
             with conn.cursor() as cursor:
                 cursor.execute('INSERT INTO posts (user_id, content, image_url) VALUES (%s, %s, %s)',
                             (session['user_id'], content, image_url))
