@@ -1,0 +1,51 @@
+name: Deploy to AWS ECR & ASG
+
+# 언제 실행할 것인가? -> main 브랜치에 코드가 push 되었을 때
+on:
+  push:
+    branches:
+      - main
+
+# 실행할 작업들
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. 내 코드 가져오기 (Checkout)
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    # 2. AWS 인증하기 (Secrets 사용)
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    # 3. ECR 로그인
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    # 4. 도커 빌드 & 푸시 (latest 태그)
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: run-cloud-repo  # 테라폼에서 만든 리포지토리 이름 확인!
+        IMAGE_TAG: latest
+      run: |
+        # python 폴더로 이동해서 빌드해야 함 (Dockerfile 위치)
+        cd python
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+    # 5. 배포: ASG 인스턴스 새로고침 (Instance Refresh)
+    # 기존 서버를 하나씩 끄고 새 서버(새 이미지)를 띄우는 명령
+    - name: Refresh Auto Scaling Group
+      run: |
+        aws autoscaling start-instance-refresh \
+          --auto-scaling-group-name run-cloud-asg \
+          --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 60}'

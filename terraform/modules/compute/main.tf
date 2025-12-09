@@ -148,8 +148,6 @@ user_data = base64encode(<<-EOF
                 -e DB_NAME="${var.db_name}" \
                 -e DB_USER="${var.db_username}" \
                 -e DB_PASSWORD="${var.db_password}" \
-                --restart always \
-                ${var.ecr_repository_url}:latest
                 -e S3_BUCKET_NAME="${var.s3_bucket_name}" \
                 -e CDN_DOMAIN="${var.cdn_domain}" \
                 --restart always \
