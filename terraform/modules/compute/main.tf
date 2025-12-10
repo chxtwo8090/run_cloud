@@ -140,7 +140,10 @@ user_data = base64encode(<<-EOF
 
               # ECR 로그인
               aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin ${var.ecr_repository_url}
-              docker pull ${var.ecr_repository_url}:latest
+              until docker pull ${var.ecr_repository_url}:latest; do
+                echo "도커 이미지 다운로드 실패, 10초 후 재시도..."
+                sleep 10
+              done
               # [중요] docker run은 딱 한 번만 실행해야 합니다!
               # 모든 환경변수(-e)를 이 명령어 하나에 다 넣으세요.
               docker run -d -p 5000:5000 \

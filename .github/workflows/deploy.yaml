@@ -5,12 +5,17 @@ on:
   push:
     branches:
       - main
-
+      
+  workflow_run:
+    workflows: ["Terraform Infra Deploy"] # terraform.yml의 'name'과 똑같아야 함
+    types:
+      - completed
 # 실행할 작업들
 jobs:
   deploy:
     name: Build & Deploy
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
 
     steps:
     # 1. 내 코드 가져오기 (Checkout)
