@@ -1,10 +1,8 @@
-# 1. 호스팅 영역(Zone) 정보 가져오기 (이미 만들어져 있다고 가정하거나 생성)
-# 실습 편의상 여기서 Data로 가져오지 않고, 리소스를 관리하는 게 좋습니다.
-# 하지만 보통 Zone은 수동으로 만들거나 별도 모듈로 뺍니다.
-# 여기서는 편의상 "Route 53 Zone"도 같이 정의하겠습니다.
-
-resource "aws_route53_zone" "this" {
-  name = var.domain_name
+# 1. 도메인 호스팅 영역(Zone) 정보 가져오기
+# (이미 Route 53에 도메인이 있다고 가정)
+data "aws_route53_zone" "this" {
+  name         = var.domain_name
+  private_zone = false
 }
 
 # 2. 인증서 발급 요청
@@ -39,7 +37,7 @@ resource "aws_route53_record" "cert_validation" {
   records         = [each.value.record]
   ttl             = 60
   type            = each.value.type
-  zone_id         = aws_route53_zone.this.zone_id
+  zone_id         = data.aws_route53_zone.this.zone_id
 }
 
 # 4. 검증 완료 대기 (테라폼이 "발급됨" 뜰 때까지 기다려줌)

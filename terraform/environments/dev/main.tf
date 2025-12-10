@@ -85,7 +85,7 @@ module "alb" {
   public_subnet_ids = module.network.public_subnet_ids # Public Subnet에 둬야 합니다!
   sg_alb_id         = module.security.sg_alb_id
   # [추가] 도메인 & 인증서 정보 전달
-  domain_name         = "chankyu-dev.com"
+  domain_name         = "chxtwo.com"
   acm_certificate_arn = module.acm.acm_certificate_arn
   route53_zone_id     = module.acm.route53_zone_id
 }

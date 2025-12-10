@@ -65,8 +65,8 @@ resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.this.arn
   port              = 443
   protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-2016-08" # 기본 보안 정책
-  certificate_arn   = var.acm_certificate_arn     # 모듈에서 넘겨받을 인증서
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  certificate_arn   = var.acm_certificate_arn     # 모듈에서 받을 인증서
 
   default_action {
     type             = "forward"
@@ -74,11 +74,11 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# 3. [추가] Route 53 레코드 (도메인 -> ALB 연결 자동화)
+# 3. [추가] Route 53 레코드 연결 (ALB 주소를 도메인에 연결)
 resource "aws_route53_record" "www" {
-  zone_id = var.route53_zone_id # ACM 모듈에서 만든 Zone ID
+  zone_id = var.route53_zone_id # ACM 모듈에서 받은 Zone ID
   name    = var.domain_name     # 예: chankyu.com
-  type    = "A"                 # Alias(별칭) 레코드
+  type    = "A"                 # Alias 레코드
 
   alias {
     name                   = aws_lb.this.dns_name
