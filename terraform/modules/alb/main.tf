@@ -30,15 +30,59 @@ resource "aws_lb_target_group" "this" {
   }
 }
 
-# 3. 리스너 생성 (문지기)
-# 사용자가 80포트(HTTP)로 들어오면 -> 타겟 그룹으로 넘겨라
+# # 3. 리스너 생성 (문지기)
+# # 사용자가 80포트(HTTP)로 들어오면 -> 타겟 그룹으로 넘겨라
+# resource "aws_lb_listener" "http" {
+#   load_balancer_arn = aws_lb.this.arn
+#   port              = 80
+#   protocol          = "HTTP"
+
+#   default_action {
+#     type             = "forward"
+#     target_group_arn = aws_lb_target_group.this.arn
+#   }
+# }
+
+# 1. [수정] HTTP(80) 리스너 -> HTTPS로 강제 리다이렉트
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
   protocol          = "HTTP"
 
   default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+# 2. [추가] HTTPS(443) 리스너
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.this.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08" # 기본 보안 정책
+  certificate_arn   = var.acm_certificate_arn     # 모듈에서 넘겨받을 인증서
+
+  default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.this.arn
+  }
+}
+
+# 3. [추가] Route 53 레코드 (도메인 -> ALB 연결 자동화)
+resource "aws_route53_record" "www" {
+  zone_id = var.route53_zone_id # ACM 모듈에서 만든 Zone ID
+  name    = var.domain_name     # 예: chankyu.com
+  type    = "A"                 # Alias(별칭) 레코드
+
+  alias {
+    name                   = aws_lb.this.dns_name
+    zone_id                = aws_lb.this.zone_id
+    evaluate_target_health = true
   }
 }

@@ -84,6 +84,10 @@ module "alb" {
   vpc_id            = module.network.vpc_id
   public_subnet_ids = module.network.public_subnet_ids # Public Subnet에 둬야 합니다!
   sg_alb_id         = module.security.sg_alb_id
+  # [추가] 도메인 & 인증서 정보 전달
+  domain_name         = "chankyu-dev.com"
+  acm_certificate_arn = module.acm.acm_certificate_arn
+  route53_zone_id     = module.acm.route53_zone_id
 }
 
 module "database" {
@@ -98,9 +102,9 @@ module "database" {
   db_password        = "mypassword1234!" 
 }
 
+# 1. ACM 모듈 (도메인 입력)
 module "acm" {
-  source = "../../modules/acm"
-
+  source       = "../../modules/acm"
   project_name = "run-cloud"
-  domain_name  = "chankyu-cloud.kro.kr" # [중요] 내도메인.한국에서 등록한 실제 도메인 입력!
+  domain_name  = "chxtwo.com" # [실제 구매한 도메인 입력]
 }
