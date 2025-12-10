@@ -1,3 +1,11 @@
+terraform {
+  # [핵심] 상태 파일을 로컬이 아닌 S3에 저장하겠다는 설정
+  backend "s3" {
+    bucket = "chxtwo.state" # 방금 만든 버킷 이름!
+    key    = "dev/terraform.tfstate"     # 버킷 안에서의 파일 경로
+    region = "ap-northeast-2"
+  }
+}
 # 1. 테라폼 설정 및 Provider 지정
 terraform {
   required_providers {
