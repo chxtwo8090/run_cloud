@@ -48,4 +48,4 @@ jobs:
       run: |
         aws autoscaling start-instance-refresh \
           --auto-scaling-group-name run-cloud-asg \
-          --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 60}'
+          --preferences '{"MinHealthyPercentage": 0, "InstanceWarmup": 60}'

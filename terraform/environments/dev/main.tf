@@ -97,3 +97,10 @@ module "database" {
   # 포트폴리오/실습용으로는 간단하게 문자열로 넣겠습니다.
   db_password        = "mypassword1234!" 
 }
+
+module "acm" {
+  source = "../../modules/acm"
+
+  project_name = "run-cloud"
+  domain_name  = "chankyu-cloud.kro.kr" # [중요] 내도메인.한국에서 등록한 실제 도메인 입력!
+}
