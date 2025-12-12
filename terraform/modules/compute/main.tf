@@ -171,7 +171,7 @@ resource "aws_autoscaling_group" "app" {
   name                = "${var.project_name}-asg"
   vpc_zone_identifier = [var.private_subnet_id] # Private Subnet에 배치
   
-  # ASG 설정: 최소 1대, 최대 3대, 평소 2대 유지
+  # ASG 설정: 최소 1대, 최대 1대, 평소 1대 유지
   min_size         = 1
   max_size         = 1
   desired_capacity = 1
