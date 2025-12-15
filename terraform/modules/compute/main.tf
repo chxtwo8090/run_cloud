@@ -1,13 +1,13 @@
-# # 1. 최신 Amazon Linux 2023 이미지(AMI) 자동 검색
-# data "aws_ami" "amazon_linux_2023" {
-#   most_recent = true
-#   owners      = ["amazon"]
+# 1. 최신 Amazon Linux 2023 이미지(AMI) 자동 검색
+data "aws_ami" "amazon_linux_2023" {
+  most_recent = true
+  owners      = ["amazon"]
 
-#   filter {
-#     name   = "name"
-#     values = ["al2023-ami-2023.*-x86_64"]
-#   }
-# }
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023.*-x86_64"]
+  }
+}
 
 # 2. SSH 키 페어 생성 (테라폼이 알아서 만듦)
 resource "tls_private_key" "pk" {
@@ -132,11 +132,11 @@ resource "aws_launch_template" "app" {
   # 1. 도커 설치 -> 2. 도커 실행 -> 3. ECR 로그인 -> 4. 이미지 다운 & 실행
 user_data = base64encode(<<-EOF
               #!/bin/bash
-              # dnf update -y
-              # dnf install -y docker
+              dnf update -y
+              dnf install -y docker
               systemctl start docker
               systemctl enable docker
-              # usermod -aG docker ec2-user
+              usermod -aG docker ec2-user
 
               # ECR 로그인
               aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin ${var.ecr_repository_url}

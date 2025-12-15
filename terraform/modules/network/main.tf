@@ -66,36 +66,36 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# # [추가 1] NAT 게이트웨이가 사용할 고정 IP (EIP)
-# resource "aws_eip" "nat" {
-#   domain = "vpc"
+# [추가 1] NAT 게이트웨이가 사용할 고정 IP (EIP)
+resource "aws_eip" "nat" {
+  domain = "vpc"
 
-#   tags = {
-#     Name = "${var.project_name}-nat-eip"
-#   }
-# }
+  tags = {
+    Name = "${var.project_name}-nat-eip"
+  }
+}
 
-# # [추가 2] NAT 게이트웨이 생성 (Public Subnet에 위치해야 함!)
-# resource "aws_nat_gateway" "this" {
-#   allocation_id = aws_eip.nat.id
-#   subnet_id     = aws_subnet.public[0].id # 첫 번째 Public Subnet에 배치
+# [추가 2] NAT 게이트웨이 생성 (Public Subnet에 위치해야 함!)
+resource "aws_nat_gateway" "this" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public[0].id # 첫 번째 Public Subnet에 배치
 
-#   tags = {
-#     Name = "${var.project_name}-nat-gw"
-#   }
+  tags = {
+    Name = "${var.project_name}-nat-gw"
+  }
 
-#   # IGW가 먼저 만들어져야 NAT도 만들 수 있음
-#   depends_on = [aws_internet_gateway.this]
-# }
+  # IGW가 먼저 만들어져야 NAT도 만들 수 있음
+  depends_on = [aws_internet_gateway.this]
+}
 
 # [추가 3] Private 라우팅 테이블 (인터넷으로 가는 길을 NAT로 안내)
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.this.id
 
-  # route {
-  #   cidr_block     = "0.0.0.0/0"
-  #   nat_gateway_id = aws_nat_gateway.this.id
-  # }
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.this.id
+  }
 
   tags = {
     Name = "${var.project_name}-rt-private"
@@ -107,46 +107,4 @@ resource "aws_route_table_association" "private" {
   count          = length(var.private_subnet_cidrs)
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private.id
-}
-
-# 1. ECR 통신을 위한 Security Group (HTTPS 443 허용)
-resource "aws_security_group" "vpce_sg" {
-  name        = "vpce-sg"
-  description = "Allow TLS from VPC"
-  vpc_id      = aws_vpc.main.id # 변수명에 맞게 수정
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = [aws_vpc.main.cidr_block] # VPC 내부에서만 접근 허용
-  }
-}
-
-# 2. ECR API 엔드포인트 (Interface 타입)
-resource "aws_vpc_endpoint" "ecr_api" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.ap-northeast-2.ecr.api"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id # Private Subnet들에 배치
-  security_group_ids = [aws_security_group.vpce_sg.id]
-  private_dns_enabled = true
-}
-
-# 3. ECR Docker 엔드포인트 (Interface 타입) - 이미지 다운로드용
-resource "aws_vpc_endpoint" "ecr_dkr" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.ap-northeast-2.ecr.dkr"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id
-  security_group_ids = [aws_security_group.vpce_sg.id]
-  private_dns_enabled = true
-}
-
-# 4. S3 엔드포인트 (Gateway 타입) - 이미지 레이어 저장소 접근용 (무료!)
-resource "aws_vpc_endpoint" "s3" {
-  vpc_id       = aws_vpc.main.id
-  service_name = "com.amazonaws.ap-northeast-2.s3"
-  vpc_endpoint_type = "Gateway"
-  route_table_ids = [aws_route_table.private.id] # Private 라우팅 테이블에 연결
 }
