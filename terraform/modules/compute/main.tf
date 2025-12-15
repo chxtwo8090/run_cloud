@@ -1,13 +1,13 @@
-# 1. 최신 Amazon Linux 2023 이미지(AMI) 자동 검색
-data "aws_ami" "amazon_linux_2023" {
-  most_recent = true
-  owners      = ["amazon"]
+# # 1. 최신 Amazon Linux 2023 이미지(AMI) 자동 검색
+# data "aws_ami" "amazon_linux_2023" {
+#   most_recent = true
+#   owners      = ["amazon"]
 
-  filter {
-    name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
-  }
-}
+#   filter {
+#     name   = "name"
+#     values = ["al2023-ami-2023.*-x86_64"]
+#   }
+# }
 
 # 2. SSH 키 페어 생성 (테라폼이 알아서 만듦)
 resource "tls_private_key" "pk" {
@@ -116,7 +116,7 @@ resource "aws_iam_instance_profile" "ec2_profile" {
 resource "aws_launch_template" "app" {
   name = "${var.project_name}-template"
 
-  image_id      = data.aws_ami.amazon_linux_2023.id
+  image_id      = "ami-03807a9316b9abc1c" # Amazon Linux 2023 AMI (ap-northeast-2)
   instance_type = "t3.micro"
   key_name      = aws_key_pair.kp.key_name
 
@@ -132,11 +132,11 @@ resource "aws_launch_template" "app" {
   # 1. 도커 설치 -> 2. 도커 실행 -> 3. ECR 로그인 -> 4. 이미지 다운 & 실행
 user_data = base64encode(<<-EOF
               #!/bin/bash
-              dnf update -y
-              dnf install -y docker
+              # dnf update -y
+              # dnf install -y docker
               systemctl start docker
               systemctl enable docker
-              usermod -aG docker ec2-user
+              # usermod -aG docker ec2-user
 
               # ECR 로그인
               aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin ${var.ecr_repository_url}
@@ -192,4 +192,44 @@ resource "aws_autoscaling_group" "app" {
   }
 }
 
- 
+# 1. ECR 통신을 위한 Security Group (HTTPS 443 허용)
+resource "aws_security_group" "vpce_sg" {
+  name        = "vpce-sg"
+  description = "Allow TLS from VPC"
+  vpc_id      = aws_vpc.main.id # 변수명에 맞게 수정
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.main.cidr_block] # VPC 내부에서만 접근 허용
+  }
+}
+
+# 2. ECR API 엔드포인트 (Interface 타입)
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.ap-northeast-2.ecr.api"
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = aws_subnet.private[*].id # Private Subnet들에 배치
+  security_group_ids = [aws_security_group.vpce_sg.id]
+  private_dns_enabled = true
+}
+
+# 3. ECR Docker 엔드포인트 (Interface 타입) - 이미지 다운로드용
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.ap-northeast-2.ecr.dkr"
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = aws_subnet.private[*].id
+  security_group_ids = [aws_security_group.vpce_sg.id]
+  private_dns_enabled = true
+}
+
+# 4. S3 엔드포인트 (Gateway 타입) - 이미지 레이어 저장소 접근용 (무료!)
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id       = aws_vpc.main.id
+  service_name = "com.amazonaws.ap-northeast-2.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids = [aws_route_table.private.id] # Private 라우팅 테이블에 연결
+}

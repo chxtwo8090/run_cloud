@@ -10,3 +10,4 @@ override.tf.json
 .terraform.d/
 *.terraform.lock.hcl
 *.pem
+*.sh
