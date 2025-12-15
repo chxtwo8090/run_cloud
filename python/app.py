@@ -1,12 +1,14 @@
-from flask import Flask, render_template, request, redirect, session, url_for
-import pymysql,boto3
+from flask import Flask, render_template, request, redirect, session, url_for, jsonify
+import pymysql, boto3
 import datetime
 import os
+import uuid
+import math # [추가] 페이지네이션 계산(올림 처리)을 위해 추가함
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key'
 
-# 환경변수에서 DB 접속 정보 가져오기 (Terraform이 넣어줄 값들)
+# 환경변수 및 AWS 설정 (기존 유지)
 DB_HOST = os.environ.get('DB_HOST')
 DB_USER = os.environ.get('DB_USER')
 DB_PASSWORD = os.environ.get('DB_PASSWORD')
@@ -15,11 +17,10 @@ S3_BUCKET = os.environ.get('S3_BUCKET_NAME')
 CDN_DOMAIN = os.environ.get('CDN_DOMAIN')
 AWS_REGION = 'ap-northeast-2'
 
-# S3 클라이언트 생성 (IAM Role 덕분에 키/비밀번호 없이 권한 획득!)
 s3_client = boto3.client('s3', region_name=AWS_REGION)
 
 def get_db_connection():
-    # 1. 환경변수에 DB 주소가 있으면 -> AWS RDS (MySQL) 접속
+    # [기존 유지] DB 연결 로직
     if DB_HOST:
         conn = pymysql.connect(
             host=DB_HOST,
@@ -31,61 +32,68 @@ def get_db_connection():
         )
         return conn
     else:
-        # 2. 없으면 -> 로컬 테스트용 (가짜 연결 객체 반환하거나 에러 처리)
-        # (여기서는 간단히 에러 메시지 출력)
-        raise RuntimeError("DB_HOST 환경변수가 없습니다! 로컬 테스트라면 sqlite 코드를 유지해야 하지만, 실습 편의상 생략합니다.")
+        raise RuntimeError("DB_HOST 환경변수가 없습니다! 로컬 테스트환경을 확인해주세요.")
 
 def init_db():
-    # RDS는 이미 만들어져 있으므로 테이블 생성 쿼리만 날림
-    if not DB_HOST: return # 로컬이면 패스
+    if not DB_HOST: return
 
     conn = get_db_connection()
-    with conn.cursor() as cursor:
-        # 사용자 테이블
-        cursor.execute('''CREATE TABLE IF NOT EXISTS users 
-                        (id INT AUTO_INCREMENT PRIMARY KEY,
-                        username VARCHAR(255),
-                        password VARCHAR(255),
-                       email VARCHAR(255))''')
-        # 러닝 기록 테이블
-        cursor.execute('''CREATE TABLE IF NOT EXISTS runs 
-                        (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
-                         distance FLOAT, duration INT, date VARCHAR(255))''')
-        # 게시판 테이블
-        cursor.execute('''CREATE TABLE IF NOT EXISTS posts 
-                        (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
-                         content TEXT, image_url TEXT)''')
-    conn.commit()
-    conn.close()
+    try:
+        with conn.cursor() as cursor:
+            # [기존 유지] 사용자 테이블
+            cursor.execute('''CREATE TABLE IF NOT EXISTS users 
+                            (id INT AUTO_INCREMENT PRIMARY KEY,
+                            username VARCHAR(255),
+                            password VARCHAR(255),
+                            email VARCHAR(255))''')
+            
+            # [기존 유지] 러닝 기록 테이블
+            cursor.execute('''CREATE TABLE IF NOT EXISTS runs 
+                            (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
+                             distance FLOAT, duration INT, date VARCHAR(255))''')
+            
+            # [변경] 게시판 테이블 구조 변경
+            # 변경 이유: 제목(title), 조회수(views), 작성일(created_at) 기능을 지원하기 위함
+            # 주의: 기존 테이블이 있다면 이 쿼리로 컬럼이 추가되지 않을 수 있으므로, DB 초기화(DROP TABLE)가 권장됨.
+            cursor.execute('''CREATE TABLE IF NOT EXISTS posts 
+                            (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
+                             title VARCHAR(255), content TEXT, image_url TEXT,
+                             views INT DEFAULT 0, 
+                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+            
+            # [추가] 댓글 테이블 생성
+            # 변경 이유: 게시글에 대한 댓글 저장 공간 확보
+            cursor.execute('''CREATE TABLE IF NOT EXISTS comments 
+                            (id INT AUTO_INCREMENT PRIMARY KEY, post_id INT, user_id INT,
+                             content TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        conn.commit()
+    finally:
+        conn.close()
 
-# 앱 시작 시 테이블 생성 (주의: 실무에선 배포 파이프라인에서 따로 함)
 try:
     init_db()
 except Exception as e:
     print(f"DB 초기화 실패 (접속 정보 확인 필요): {e}")
 
+# [기존 유지] 회원가입 라우트
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        # [수정] HTML 폼에서 보내준 값들을 각각 받습니다.
-        username = request.form['username']  # ID 입력값
-        email = request.form['email']        # 이메일 입력값
-        password = request.form['password']  # 비밀번호 입력값
+        username = request.form['username']
+        email = request.form['email']
+        password = request.form['password']
         
         conn = get_db_connection()
         try:
             with conn.cursor() as cursor:
-                # 1. ID 중복 확인
                 cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
                 if cursor.fetchone():
                     return "이미 존재하는 ID입니다! <a href='/register'>다시 시도</a>"
                 
-                # [추가] 이메일 중복 확인 (선택사항)
                 cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
                 if cursor.fetchone():
                     return "이미 가입된 이메일입니다! <a href='/register'>다시 시도</a>"
 
-                # 2. DB에 저장 (ID, 비밀번호, 이메일 모두 저장)
                 cursor.execute('INSERT INTO users (username, password, email) VALUES (%s, %s, %s)', 
                                (username, password, email))
             conn.commit()
@@ -98,6 +106,7 @@ def register():
         
     return render_template('register.html')
 
+# [기존 유지] 로그인 라우트
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -122,6 +131,7 @@ def login():
             
     return render_template('login.html')
 
+# [기존 유지] 대시보드 라우트
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -146,6 +156,7 @@ def dashboard():
     
     return render_template('dashboard.html', username=session['username'], runs=my_runs)
 
+# [기존 유지] 랭킹 라우트
 @app.route('/ranking')
 def ranking():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -164,6 +175,7 @@ def ranking():
     
     return render_template('ranking.html', ranks=ranks)
 
+# [변경] 커뮤니티 라우트 (기능 대폭 추가)
 @app.route('/community', methods=['GET', 'POST'])
 def community():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -171,57 +183,123 @@ def community():
     conn = get_db_connection()
     try:
         if request.method == 'POST':
+            # [추가] 제목(title) 입력값 받기
+            title = request.form['title']
             content = request.form['content']
-            image_file = request.files['image'] # HTML에서 file 타입으로 보낸 것 받기
+            image_file = request.files['image']
             
-            image_url = "" # 이미지가 없을 경우 빈 값
+            image_url = ""
 
-            # 사용자가 이미지를 올렸다면?
             if image_file and image_file.filename != '':
-                # 1. 파일 이름 안전하게 변경 (랜덤 UUID 사용)
                 ext = image_file.filename.split('.')[-1]
                 filename = f"{uuid.uuid4()}.{ext}"
-                
                 try:
-                    # 2. S3 버킷에 업로드
-                    # (ContentType을 설정해야 브라우저에서 바로 보입니다)
                     s3_client.upload_fileobj(
-                        image_file,
-                        S3_BUCKET,
-                        filename,
+                        image_file, S3_BUCKET, filename,
                         ExtraArgs={'ContentType': image_file.content_type}
                     )
-                    
-                    # 3. 이미지 주소 생성 (CDN 도메인 사용)
-                    # CDN 도메인이 없으면 S3 기본 주소 사용 (비상용)
                     if CDN_DOMAIN:
                         image_url = f"https://{CDN_DOMAIN}/{filename}"
                     else:
                         image_url = f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{filename}"
-                        
                 except Exception as e:
                     print(f"S3 업로드 실패: {e}")
                     return f"업로드 에러 발생: {e}"
 
-            # DB에 저장 (이미지 URL 포함)
+            # [변경] DB Insert 쿼리에 title, views(0), created_at(NOW()) 추가
             with conn.cursor() as cursor:
-                cursor.execute('INSERT INTO posts (user_id, content, image_url) VALUES (%s, %s, %s)',
-                            (session['user_id'], content, image_url))
+                cursor.execute('''INSERT INTO posts (user_id, title, content, image_url, views, created_at) 
+                                  VALUES (%s, %s, %s, %s, 0, NOW())''',
+                            (session['user_id'], title, content, image_url))
             conn.commit()
+            return redirect(url_for('community'))
             
+        # [변경] GET 요청 시: 페이지네이션(Pagination) 로직 적용
+        # 이유: 글이 많아졌을 때 한 번에 다 불러오지 않고 끊어서 보여주기 위함
+        page = request.args.get('page', 1, type=int)
+        limit = 5 # 한 페이지당 보여줄 글 개수
+        offset = (page - 1) * limit
+
         with conn.cursor() as cursor:
-            cursor.execute('SELECT p.*, u.username FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.id DESC')
+            # 1. 전체 글 개수 파악 (총 페이지 수 계산용)
+            cursor.execute('SELECT COUNT(*) as count FROM posts')
+            total_posts = cursor.fetchone()['count']
+            total_pages = math.ceil(total_posts / limit)
+
+            # 2. 현재 페이지에 해당하는 글만 가져오기 (LIMIT, OFFSET 사용)
+            cursor.execute('''
+                SELECT p.*, u.username 
+                FROM posts p JOIN users u ON p.user_id = u.id 
+                ORDER BY p.id DESC LIMIT %s OFFSET %s
+            ''', (limit, offset))
             posts = cursor.fetchall()
+            
     finally:
         conn.close()
     
-    return render_template('community.html', posts=posts)
+    # [변경] 템플릿에 현재 페이지(curr_page)와 총 페이지(total_pages) 정보를 함께 전달
+    return render_template('community.html', posts=posts, curr_page=page, total_pages=total_pages)
 
+# [추가] 게시글 상세 조회 API (모달용)
+# 기능: 게시글 내용과 댓글 목록을 JSON으로 반환하고 조회수를 1 증가시킴
+@app.route('/api/post/<int:post_id>')
+def get_post_detail(post_id):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cursor:
+            # 1. 조회수 증가
+            cursor.execute('UPDATE posts SET views = views + 1 WHERE id = %s', (post_id,))
+            conn.commit()
+
+            # 2. 게시글 상세 정보 가져오기
+            cursor.execute('''
+                SELECT p.*, u.username 
+                FROM posts p JOIN users u ON p.user_id = u.id 
+                WHERE p.id = %s
+            ''', (post_id,))
+            post = cursor.fetchone()
+
+            # 3. 해당 게시글의 댓글 목록 가져오기
+            cursor.execute('''
+                SELECT c.*, u.username 
+                FROM comments c JOIN users u ON c.user_id = u.id 
+                WHERE c.post_id = %s ORDER BY c.id ASC
+            ''', (post_id,))
+            comments = cursor.fetchall()
+            
+        return jsonify({'post': post, 'comments': comments})
+    finally:
+        conn.close()
+
+# [추가] 댓글 등록 API
+# 기능: 모달에서 입력한 댓글을 DB에 저장
+@app.route('/api/comment', methods=['POST'])
+def add_comment():
+    if 'user_id' not in session:
+        return jsonify({'result': 'fail', 'msg': '로그인이 필요합니다.'})
+
+    post_id = request.form['post_id']
+    content = request.form['content']
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute('''
+                INSERT INTO comments (post_id, user_id, content, created_at) 
+                VALUES (%s, %s, %s, NOW())
+            ''', (post_id, session['user_id'], content))
+        conn.commit()
+        return jsonify({'result': 'success'})
+    finally:
+        conn.close()
+
+# [기존 유지] 로그아웃
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
 
+# [기존 유지] 헬스 체크
 @app.route('/health')
 def health():
     return "OK", 200

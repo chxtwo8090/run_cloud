@@ -6,9 +6,10 @@
     <title>Community - Run Cloud</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     
     <style>
-        /* [1. 대시보드와 100% 동일한 기본 스타일] */
+        /* [기존 유지] 대시보드와 동일한 기본 스타일 */
         body { background-color: #f8f9fc; }
         .sidebar { 
             min-height: 100vh; 
@@ -20,7 +21,7 @@
         .sidebar a:hover { color: #fff; background: rgba(255,255,255,.1); }
         .card { border: none; box-shadow: 0 .15rem 1.75rem 0 rgba(58,59,69,.15); }
 
-        /* [2. 커뮤니티 전용 스타일 (아카라이브 느낌)] */
+        /* [기존 유지] 커뮤니티 전용 스타일 */
         .table-hover tbody tr:hover { background-color: #f8f9fc; }
         .thumb-box {
             width: 60px;
@@ -46,6 +47,9 @@
         .post-title:hover { color: #4e73df; }
         .reply-count { color: #e74a3b; font-size: 0.8rem; font-weight: bold; margin-left: 4px; }
         .badge-category { background-color: #e3e6f0; color: #5a5c69; font-size: 0.75rem; border: 1px solid #d1d3e2; }
+        
+        /* [추가] 클릭 가능한 행 스타일 */
+        .clickable-row { cursor: pointer; }
     </style>
 </head>
 <body>
@@ -90,7 +94,7 @@
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table align-middle mb-0">
+                    <table class="table align-middle mb-0 table-hover">
                         <thead class="table-light">
                             <tr>
                                 <th class="text-center" style="width: 5%">No</th>
@@ -102,8 +106,8 @@
                         </thead>
                         <tbody>
                             {% for post in posts %}
-                            <tr>
-                                <td class="text-center text-muted fw-bold">{{ loop.index }}</td>
+                            <tr class="clickable-row" onclick="openReadModal({{ post.id }})">
+                                <td class="text-center text-muted fw-bold">{{ post.id }}</td>
                                 <td>
                                     <div class="d-flex align-items-center py-1">
                                         <div class="thumb-box me-3">
@@ -114,10 +118,9 @@
                                             {% endif %}
                                         </div>
                                         <div>
-                                            <a href="#" class="post-title text-truncate" style="max-width: 400px;">
-                                                {{ post.content }}
-                                                <span class="reply-count">[2]</span>
-                                            </a>
+                                            <span class="post-title text-truncate" style="max-width: 400px;">
+                                                {{ post.title }}
+                                                </span>
                                             <div class="mt-1">
                                                 <span class="badge badge-category rounded-pill px-2">잡담</span>
                                             </div>
@@ -129,8 +132,8 @@
                                         <i class="fas fa-user me-1"></i> {{ post.username }}
                                     </span>
                                 </td>
-                                <td class="text-center small text-muted">2025.12.11</td>
-                                <td class="text-center small text-muted">105</td>
+                                <td class="text-center small text-muted">{{ post.created_at }}</td>
+                                <td class="text-center small text-muted">{{ post.views }}</td>
                             </tr>
                             {% else %}
                             <tr>
@@ -146,14 +149,23 @@
                     </table>
                 </div>
             </div>
+            
             <div class="card-footer bg-white py-3 border-top-0">
                 <nav>
                     <ul class="pagination justify-content-center mb-0">
-                        <li class="page-item disabled"><a class="page-link" href="#">이전</a></li>
-                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                        <li class="page-item"><a class="page-link" href="#">2</a></li>
-                        <li class="page-item"><a class="page-link" href="#">3</a></li>
-                        <li class="page-item"><a class="page-link" href="#">다음</a></li>
+                        <li class="page-item {% if curr_page == 1 %}disabled{% endif %}">
+                            <a class="page-link" href="?page={{ curr_page - 1 }}">이전</a>
+                        </li>
+                        
+                        {% for p in range(1, total_pages + 1) %}
+                        <li class="page-item {% if p == curr_page %}active{% endif %}">
+                            <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+                        </li>
+                        {% endfor %}
+                        
+                        <li class="page-item {% if curr_page == total_pages %}disabled{% endif %}">
+                            <a class="page-link" href="?page={{ curr_page + 1 }}">다음</a>
+                        </li>
                     </ul>
                 </nav>
             </div>
@@ -172,6 +184,10 @@
             <form action="/community" method="post" enctype="multipart/form-data">
                 <div class="modal-body p-4">
                     <div class="mb-3">
+                        <label class="form-label fw-bold text-secondary">제목</label>
+                        <input type="text" name="title" class="form-control" placeholder="제목을 입력하세요" required>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label fw-bold text-secondary">내용</label>
                         <textarea name="content" class="form-control" rows="5" placeholder="내용을 입력하세요" required></textarea>
                     </div>
@@ -189,6 +205,116 @@
     </div>
 </div>
 
+<div class="modal fade" id="readModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="readTitle">제목 로딩중...</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="p-4 border-bottom">
+                    <div class="d-flex justify-content-between text-muted small mb-3">
+                        <span id="readAuthor">작성자</span>
+                        <span><span id="readDate">날짜</span> | 조회 <span id="readViews">0</span></span>
+                    </div>
+                    <div id="readImageArea" class="mb-3 text-center d-none">
+                        <img id="readImage" src="" class="img-fluid rounded" style="max-height: 400px;">
+                    </div>
+                    <div id="readContent" style="white-space: pre-line; color: #333;"></div>
+                </div>
+                
+                <div class="p-4 bg-light">
+                    <h6 class="fw-bold mb-3"><i class="far fa-comment-dots me-2"></i>댓글</h6>
+                    
+                    <div id="commentList" class="mb-3"></div>
+                    
+                    <div class="d-flex gap-2">
+                        <input type="hidden" id="currentPostId">
+                        <input type="text" id="commentInput" class="form-control" placeholder="댓글을 남겨보세요...">
+                        <button class="btn btn-primary" onclick="submitComment()">등록</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    // 1. 게시글 클릭 시 상세 내용 가져오기 (AJAX)
+    function openReadModal(postId) {
+        // UI 초기화 (로딩중 상태)
+        $('#readTitle').text('로딩중...');
+        $('#readContent').text('');
+        $('#commentList').html('');
+        $('#readImageArea').addClass('d-none');
+        $('#currentPostId').val(postId);
+
+        // API 호출
+        $.get(`/api/post/${postId}`, function(data) {
+            const post = data.post;
+            const comments = data.comments;
+
+            // 데이터 채우기
+            $('#readTitle').text(post.title);
+            $('#readAuthor').text(post.username);
+            $('#readDate').text(post.created_at);
+            $('#readViews').text(post.views);
+            $('#readContent').text(post.content);
+
+            // 이미지가 있다면 표시
+            if (post.image_url) {
+                $('#readImage').attr('src', post.image_url);
+                $('#readImageArea').removeClass('d-none');
+            }
+
+            // 댓글 목록 렌더링
+            let commentHtml = '';
+            if (comments.length === 0) {
+                commentHtml = '<p class="text-muted small">아직 댓글이 없습니다. 첫 댓글을 남겨보세요!</p>';
+            } else {
+                comments.forEach(c => {
+                    commentHtml += `
+                        <div class="card border-0 shadow-sm mb-2">
+                            <div class="card-body p-2">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span class="fw-bold small text-primary">${c.username}</span>
+                                    <span class="text-muted small" style="font-size: 0.75rem;">${c.created_at}</span>
+                                </div>
+                                <div class="small text-dark">${c.content}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            $('#commentList').html(commentHtml);
+
+            // 모달창 띄우기
+            new bootstrap.Modal(document.getElementById('readModal')).show();
+        });
+    }
+
+    // 2. 댓글 등록 함수
+    function submitComment() {
+        const postId = $('#currentPostId').val();
+        const content = $('#commentInput').val();
+
+        if (!content.trim()) { alert('내용을 입력하세요'); return; }
+
+        $.post('/api/comment', { post_id: postId, content: content }, function(response) {
+            if (response.result === 'success') {
+                $('#commentInput').val(''); // 입력창 비우기
+                // 모달 닫았다 열 필요 없이, 현재 모달 내용을 갱신하기 위해 함수 재호출
+                // (실무에선 댓글 부분만 부분 갱신하지만, 여기선 간편하게 재호출)
+                openReadModal(postId); 
+            } else {
+                alert(response.msg);
+            }
+        });
+    }
+</script>
+
 </body>
 </html>
