@@ -89,18 +89,18 @@ resource "aws_route_table_association" "public" {
 # }
 
 # [추가 3] Private 라우팅 테이블 (인터넷으로 가는 길을 NAT로 안내)
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.this.id
+# resource "aws_route_table" "private" {
+#   vpc_id = aws_vpc.this.id
 
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.this.id
-  }
+#   route {
+#     cidr_block     = "0.0.0.0/0"
+#     nat_gateway_id = aws_nat_gateway.this.id
+#   }
 
-  tags = {
-    Name = "${var.project_name}-rt-private"
-  }
-}
+#   tags = {
+#     Name = "${var.project_name}-rt-private"
+#   }
+# }
 
 # [추가 4] Private 서브넷과 라우팅 테이블 연결 (이게 없으면 도로가 안 이어짐!)
 resource "aws_route_table_association" "private" {
