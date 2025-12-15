@@ -142,7 +142,11 @@ def dashboard():
         if request.method == 'POST':
             distance = request.form['distance']
             duration = request.form['duration']
-            date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # [수정] 한국 시간(KST)으로 저장하기
+            # UTC 현재 시간 + 9시간
+            kst_now = datetime.datetime.utcnow() + timedelta(hours=9)
+            date = kst_now.strftime("%Y-%m-%d %H:%M:%S")
             
             with conn.cursor() as cursor:
                 cursor.execute('INSERT INTO runs (user_id, distance, duration, date) VALUES (%s, %s, %s, %s)',
