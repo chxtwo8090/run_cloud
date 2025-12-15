@@ -114,6 +114,9 @@ resource "aws_vpc_endpoint" "ecr_api" {
   subnet_ids        = aws_subnet.private[*].id
   security_group_ids = [aws_security_group.vpce.id]
   private_dns_enabled = true
+  tags = {
+    Name = "${var.project_name}-vpce-ecr-api"
+  }
 }
 
 # 3. ECR Docker 엔드포인트 (이미지 다운로드용)
@@ -124,6 +127,9 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   subnet_ids        = aws_subnet.private[*].id
   security_group_ids = [aws_security_group.vpce.id]
   private_dns_enabled = true
+  tags = {
+    Name = "${var.project_name}-vpce-ecr-dkr"
+  }
 }
 
 # 4. S3 엔드포인트 (Gateway 타입 - 무료)
@@ -133,4 +139,7 @@ resource "aws_vpc_endpoint" "s3" {
   service_name = "com.amazonaws.ap-northeast-2.s3"
   vpc_endpoint_type = "Gateway"
   route_table_ids = [aws_route_table.private.id]
+  tags = {
+    Name = "${var.project_name}-vpce-s3"
+  }
 }
