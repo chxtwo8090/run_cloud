@@ -43,8 +43,7 @@ def init_db():
         with conn.cursor() as cursor:
             # [수정] 게시판 기능 확장을 위해 기존 테이블 삭제 후 재생성 (개발 단계이므로 DROP 사용)
             # 이유: 기존 posts 테이블에는 title, views 컬럼이 없어서 에러가 발생함
-            cursor.execute('DROP TABLE IF EXISTS comments')
-            cursor.execute('DROP TABLE IF EXISTS posts')
+
 
             # 사용자 테이블 (기존 유지)
             cursor.execute('''CREATE TABLE IF NOT EXISTS users 
