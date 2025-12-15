@@ -40,29 +40,32 @@ def init_db():
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
-            # [기존 유지] 사용자 테이블
+            # [중요] 기존 테이블 삭제 (스키마 갱신을 위해 추가한 코드)
+            # 주의: 기존 데이터가 모두 삭제됩니다! 개발 단계이므로 이렇게 진행합니다.
+            # 외래키 관계 때문에 comments(자식)를 먼저 지우고 posts(부모)를 지워야 합니다.
+            cursor.execute('DROP TABLE IF EXISTS comments')
+            cursor.execute('DROP TABLE IF EXISTS posts')
+            
+            # 사용자 테이블 생성 (유지)
             cursor.execute('''CREATE TABLE IF NOT EXISTS users 
                             (id INT AUTO_INCREMENT PRIMARY KEY,
                             username VARCHAR(255),
                             password VARCHAR(255),
                             email VARCHAR(255))''')
             
-            # [기존 유지] 러닝 기록 테이블
+            # 러닝 기록 테이블 생성 (유지)
             cursor.execute('''CREATE TABLE IF NOT EXISTS runs 
                             (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
                              distance FLOAT, duration INT, date VARCHAR(255))''')
             
-            # [변경] 게시판 테이블 구조 변경
-            # 변경 이유: 제목(title), 조회수(views), 작성일(created_at) 기능을 지원하기 위함
-            # 주의: 기존 테이블이 있다면 이 쿼리로 컬럼이 추가되지 않을 수 있으므로, DB 초기화(DROP TABLE)가 권장됨.
+            # [재생성] 게시판 테이블 (이제 title, views, created_at이 확실히 들어갑니다)
             cursor.execute('''CREATE TABLE IF NOT EXISTS posts 
                             (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
                              title VARCHAR(255), content TEXT, image_url TEXT,
                              views INT DEFAULT 0, 
                              created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
             
-            # [추가] 댓글 테이블 생성
-            # 변경 이유: 게시글에 대한 댓글 저장 공간 확보
+            # [재생성] 댓글 테이블
             cursor.execute('''CREATE TABLE IF NOT EXISTS comments 
                             (id INT AUTO_INCREMENT PRIMARY KEY, post_id INT, user_id INT,
                              content TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
