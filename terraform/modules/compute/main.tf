@@ -1,15 +1,4 @@
-# 1. 최신 Amazon Linux 2023 이미지(AMI) 자동 검색
-data "aws_ami" "amazon_linux_2023" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
-  }
-}
-
-# 2. SSH 키 페어 생성 (테라폼이 알아서 만듦)
+# 1. SSH 키 페어 생성
 resource "tls_private_key" "pk" {
   algorithm = "RSA"
   rsa_bits  = 4096
@@ -20,51 +9,38 @@ resource "aws_key_pair" "kp" {
   public_key = tls_private_key.pk.public_key_openssh
 }
 
-# 생성된 비밀키를 내 컴퓨터에 파일로 저장 (로그인할 때 필요함)
 resource "local_file" "ssh_key" {
   filename        = "${path.module}/../../${var.project_name}-key.pem"
   content         = tls_private_key.pk.private_key_pem
-  file_permission = "0400" # 읽기 전용 권한 설정
+  file_permission = "0400"
 }
 
-# 3. Bastion Host 생성 (Public Subnet)
+# 2. Bastion Host (이미지 검색 로직 유지 - 배스천은 최신 이미지 써도 무방)
+data "aws_ami" "amazon_linux_2023" {
+  most_recent = true
+  owners      = ["amazon"]
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023.*-x86_64"]
+  }
+}
+
 resource "aws_instance" "bastion" {
   ami                         = data.aws_ami.amazon_linux_2023.id
-  instance_type               = "t3.micro" # 프리티어
+  instance_type               = "t3.micro"
   subnet_id                   = var.public_subnet_id
   vpc_security_group_ids      = [var.sg_bastion_id]
   key_name                    = aws_key_pair.kp.key_name
-  associate_public_ip_address = true # 공인 IP 자동 할당
-
-  lifecycle {
-    ignore_changes = [ami]
-  }
+  associate_public_ip_address = true
 
   tags = {
     Name = "${var.project_name}-bastion"
   }
 }
 
-# # 4. App Server 생성 (Private Subnet)
-# # 참고: NAT Gateway가 없어서 지금 당장은 인터넷이 안 됩니다. (파일 전송은 Bastion 통해 가능)
-# resource "aws_instance" "app" {
-#   ami                    = data.aws_ami.amazon_linux_2023.id
-#   instance_type          = "t3.micro"
-#   subnet_id              = var.private_subnet_id
-#   vpc_security_group_ids = [var.sg_app_id]
-#   key_name               = aws_key_pair.kp.key_name
-
-#   tags = {
-#     Name = "${var.project_name}-app-1"
-#   }
-# }
-
-# -----------------------------------------------------------
-# 1. IAM Role 설정 (EC2가 ECR에서 이미지를 꺼내오기 위해 필수!)
-# -----------------------------------------------------------
+# 3. IAM Role 설정
 resource "aws_iam_role" "ec2_role" {
   name = "${var.project_name}-ec2-role"
-
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -75,11 +51,9 @@ resource "aws_iam_role" "ec2_role" {
   })
 }
 
-# [추가] S3 업로드 권한 정책 생성
 resource "aws_iam_policy" "s3_upload" {
   name        = "${var.project_name}-s3-upload-policy"
   description = "Allow EC2 to upload images to S3"
-
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -92,60 +66,53 @@ resource "aws_iam_policy" "s3_upload" {
   })
 }
 
-# [추가] 정책을 기존 EC2 역할에 연결
 resource "aws_iam_role_policy_attachment" "s3_attach" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = aws_iam_policy.s3_upload.arn
 }
 
-# ECR 읽기 권한(ReadOnly) 정책을 역할에 붙임
 resource "aws_iam_role_policy_attachment" "ecr_readonly" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
-# 인스턴스 프로파일 (EC2에 역할을 연결하는 껍데기)
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "${var.project_name}-ec2-profile"
   role = aws_iam_role.ec2_role.name
 }
 
 # -----------------------------------------------------------
-# 2. Launch Template (서버 찍어내는 틀)
+# 4. Launch Template (AMI 교체 및 User Data 수정)
 # -----------------------------------------------------------
 resource "aws_launch_template" "app" {
   name = "${var.project_name}-template"
 
-  image_id      = "ami-03807a9316b9abc1c" # Amazon Linux 2023 AMI (ap-northeast-2)
+  # [중요] 여기에 찬규님이 만든 AMI ID를 입력하세요! (예: ami-0ab...)
+  image_id      = "ami-03807a9316b9abc1c" 
+  
   instance_type = "t3.micro"
   key_name      = aws_key_pair.kp.key_name
-
-  # 네트워크 설정 (보안그룹 연결)
   vpc_security_group_ids = [var.sg_app_id]
 
-  # IAM 권한 연결
   iam_instance_profile {
     name = aws_iam_instance_profile.ec2_profile.name
   }
 
-  # [핵심] 서버가 켜지자마자 실행할 명령어 (User Data)
-  # 1. 도커 설치 -> 2. 도커 실행 -> 3. ECR 로그인 -> 4. 이미지 다운 & 실행
-user_data = base64encode(<<-EOF
+  # [수정] 도커 설치 과정 삭제 (이미지에 포함됨) -> 실행만 하면 됨
+  user_data = base64encode(<<-EOF
               #!/bin/bash
-              dnf update -y
-              dnf install -y docker
+              # 도커 서비스 시작 (이미 설치되어 있음)
               systemctl start docker
               systemctl enable docker
-              usermod -aG docker ec2-user
-
-              # ECR 로그인
+              
+              # ECR 로그인 및 컨테이너 실행
               aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin ${var.ecr_repository_url}
+              
               until docker pull ${var.ecr_repository_url}:latest; do
-                echo "도커 이미지 다운로드 실패, 10초 후 재시도..."
-                sleep 10
+                echo "이미지 다운로드 재시도..."
+                sleep 5
               done
-              # [중요] docker run은 딱 한 번만 실행해야 합니다!
-              # 모든 환경변수(-e)를 이 명령어 하나에 다 넣으세요.
+
               docker run -d -p 5000:5000 \
                 -e DB_HOST="${replace(var.db_endpoint, ":3306", "")}" \
                 -e DB_NAME="${var.db_name}" \
@@ -164,25 +131,20 @@ user_data = base64encode(<<-EOF
   }
 }
 
-# -----------------------------------------------------------
-# 3. Auto Scaling Group (실제 공장 가동)
-# -----------------------------------------------------------
+# 5. Auto Scaling Group
 resource "aws_autoscaling_group" "app" {
   name                = "${var.project_name}-asg"
-  vpc_zone_identifier = [var.private_subnet_id] # Private Subnet에 배치
+  vpc_zone_identifier = [var.private_subnet_id]
   
-  # ASG 설정: 최소 1대, 최대 1대, 평소 1대 유지
   min_size         = 1
   max_size         = 1
   desired_capacity = 1
 
-  # 사용할 템플릿 지정
   launch_template {
     id      = aws_launch_template.app.id
     version = "$Latest"
   }
 
-  # [중요] ALB와 연결! (이게 없으면 로드밸런서가 서버를 못 찾음)
   target_group_arns = [var.target_group_arn]
 
   tag {
