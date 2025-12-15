@@ -108,3 +108,45 @@ resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private.id
 }
+
+# 1. ECR 통신을 위한 Security Group (HTTPS 443 허용)
+resource "aws_security_group" "vpce_sg" {
+  name        = "vpce-sg"
+  description = "Allow TLS from VPC"
+  vpc_id      = aws_vpc.main.id # 변수명에 맞게 수정
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.main.cidr_block] # VPC 내부에서만 접근 허용
+  }
+}
+
+# 2. ECR API 엔드포인트 (Interface 타입)
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.ap-northeast-2.ecr.api"
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = aws_subnet.private[*].id # Private Subnet들에 배치
+  security_group_ids = [aws_security_group.vpce_sg.id]
+  private_dns_enabled = true
+}
+
+# 3. ECR Docker 엔드포인트 (Interface 타입) - 이미지 다운로드용
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.ap-northeast-2.ecr.dkr"
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = aws_subnet.private[*].id
+  security_group_ids = [aws_security_group.vpce_sg.id]
+  private_dns_enabled = true
+}
+
+# 4. S3 엔드포인트 (Gateway 타입) - 이미지 레이어 저장소 접근용 (무료!)
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id       = aws_vpc.main.id
+  service_name = "com.amazonaws.ap-northeast-2.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids = [aws_route_table.private.id] # Private 라우팅 테이블에 연결
+}
