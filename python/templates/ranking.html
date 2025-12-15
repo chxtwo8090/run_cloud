@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        /* [공통 스타일 - 대시보드/커뮤니티와 동일] */
+        /* [1. 사이드바 스타일 - 커뮤니티와 100% 동일하게 통일] */
         body { background-color: #f8f9fc; font-family: 'Nunito', sans-serif; }
         .sidebar { 
             min-height: 100vh; 
@@ -21,11 +21,11 @@
         .card { border: none; box-shadow: 0 .15rem 1.75rem 0 rgba(58,59,69,.15); }
         .table-hover tbody tr:hover { background-color: #f8f9fc; }
 
-        /* [랭킹 페이지 전용 스타일] */
+        /* [2. 랭킹 페이지 전용 스타일] */
         .rank-icon { font-size: 1.2rem; margin-right: 5px; }
-        .rank-1 { color: #FFD700; font-weight: bold; font-size: 1.4rem; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); } /* 금메달 색상 */
-        .rank-2 { color: #C0C0C0; font-weight: bold; font-size: 1.3rem; } /* 은메달 색상 */
-        .rank-3 { color: #CD7F32; font-weight: bold; font-size: 1.3rem; } /* 동메달 색상 */
+        .rank-1 { color: #FFD700; font-weight: bold; font-size: 1.4rem; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); }
+        .rank-2 { color: #C0C0C0; font-weight: bold; font-size: 1.3rem; }
+        .rank-3 { color: #CD7F32; font-weight: bold; font-size: 1.3rem; }
         .rank-other { color: #858796; font-weight: bold; font-size: 1.1rem; }
         
         .user-avatar {
@@ -97,7 +97,6 @@
                                         <span class="rank-other">{{ loop.index }}</span>
                                     {% endif %}
                                 </td>
-                                
                                 <td>
                                     <div class="d-flex align-items-center">
                                         <div class="user-avatar shadow-sm">
@@ -111,7 +110,6 @@
                                         </div>
                                     </div>
                                 </td>
-                                
                                 <td class="text-center">
                                     <span class="h5 fw-bold text-primary mb-0">
                                         {% if rank.total_dist %}
@@ -126,7 +124,7 @@
                             {% else %}
                             <tr>
                                 <td colspan="3" class="text-center py-5">
-                                    <p class="text-muted mb-0">아직 등록된 기록이 없습니다. 첫 번째 주인공이 되어보세요!</p>
+                                    <p class="text-muted mb-0">아직 등록된 기록이 없습니다.</p>
                                 </td>
                             </tr>
                             {% endfor %}
