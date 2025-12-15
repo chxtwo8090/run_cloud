@@ -3,12 +3,13 @@ import pymysql, boto3
 import datetime
 import os
 import uuid
-import math # [추가] 페이지네이션 계산(올림 처리)을 위해 추가함
+import math
+from datetime import timedelta # [추가] 한국 시간(KST) 계산을 위해 추가
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key'
 
-# 환경변수 및 AWS 설정 (기존 유지)
+# 환경변수에서 DB 접속 정보 가져오기 (Terraform이 넣어줄 값들)
 DB_HOST = os.environ.get('DB_HOST')
 DB_USER = os.environ.get('DB_USER')
 DB_PASSWORD = os.environ.get('DB_PASSWORD')
@@ -17,10 +18,10 @@ S3_BUCKET = os.environ.get('S3_BUCKET_NAME')
 CDN_DOMAIN = os.environ.get('CDN_DOMAIN')
 AWS_REGION = 'ap-northeast-2'
 
+# S3 클라이언트 생성
 s3_client = boto3.client('s3', region_name=AWS_REGION)
 
 def get_db_connection():
-    # [기존 유지] DB 연결 로직
     if DB_HOST:
         conn = pymysql.connect(
             host=DB_HOST,
@@ -32,7 +33,7 @@ def get_db_connection():
         )
         return conn
     else:
-        raise RuntimeError("DB_HOST 환경변수가 없습니다! 로컬 테스트환경을 확인해주세요.")
+        raise RuntimeError("DB_HOST 환경변수가 없습니다! 로컬 테스트라면 sqlite 코드를 유지해야 하지만, 실습 편의상 생략합니다.")
 
 def init_db():
     if not DB_HOST: return
@@ -40,32 +41,31 @@ def init_db():
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
-            # [중요] 기존 테이블 삭제 (스키마 갱신을 위해 추가한 코드)
-            # 주의: 기존 데이터가 모두 삭제됩니다! 개발 단계이므로 이렇게 진행합니다.
-            # 외래키 관계 때문에 comments(자식)를 먼저 지우고 posts(부모)를 지워야 합니다.
+            # [수정] 게시판 기능 확장을 위해 기존 테이블 삭제 후 재생성 (개발 단계이므로 DROP 사용)
+            # 이유: 기존 posts 테이블에는 title, views 컬럼이 없어서 에러가 발생함
             cursor.execute('DROP TABLE IF EXISTS comments')
             cursor.execute('DROP TABLE IF EXISTS posts')
-            
-            # 사용자 테이블 생성 (유지)
+
+            # 사용자 테이블 (기존 유지)
             cursor.execute('''CREATE TABLE IF NOT EXISTS users 
                             (id INT AUTO_INCREMENT PRIMARY KEY,
                             username VARCHAR(255),
                             password VARCHAR(255),
                             email VARCHAR(255))''')
             
-            # 러닝 기록 테이블 생성 (유지)
+            # 러닝 기록 테이블 (기존 유지)
             cursor.execute('''CREATE TABLE IF NOT EXISTS runs 
                             (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
                              distance FLOAT, duration INT, date VARCHAR(255))''')
             
-            # [재생성] 게시판 테이블 (이제 title, views, created_at이 확실히 들어갑니다)
+            # [재생성] 게시판 테이블 (제목, 조회수, 작성일 추가)
             cursor.execute('''CREATE TABLE IF NOT EXISTS posts 
                             (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
                              title VARCHAR(255), content TEXT, image_url TEXT,
                              views INT DEFAULT 0, 
                              created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
             
-            # [재생성] 댓글 테이블
+            # [재생성] 댓글 테이블 (신규 추가)
             cursor.execute('''CREATE TABLE IF NOT EXISTS comments 
                             (id INT AUTO_INCREMENT PRIMARY KEY, post_id INT, user_id INT,
                              content TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
@@ -73,12 +73,12 @@ def init_db():
     finally:
         conn.close()
 
+# 앱 시작 시 DB 초기화 시도
 try:
     init_db()
 except Exception as e:
     print(f"DB 초기화 실패 (접속 정보 확인 필요): {e}")
 
-# [기존 유지] 회원가입 라우트
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -109,7 +109,6 @@ def register():
         
     return render_template('register.html')
 
-# [기존 유지] 로그인 라우트
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -134,7 +133,6 @@ def login():
             
     return render_template('login.html')
 
-# [기존 유지] 대시보드 라우트
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -159,7 +157,6 @@ def dashboard():
     
     return render_template('dashboard.html', username=session['username'], runs=my_runs)
 
-# [기존 유지] 랭킹 라우트
 @app.route('/ranking')
 def ranking():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -178,7 +175,7 @@ def ranking():
     
     return render_template('ranking.html', ranks=ranks)
 
-# [변경] 커뮤니티 라우트 (기능 대폭 추가)
+# [수정] 커뮤니티 라우트: 제목 저장, 페이지네이션, 한국 시간 적용
 @app.route('/community', methods=['GET', 'POST'])
 def community():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -186,11 +183,9 @@ def community():
     conn = get_db_connection()
     try:
         if request.method == 'POST':
-            # [추가] 제목(title) 입력값 받기
             title = request.form['title']
             content = request.form['content']
             image_file = request.files['image']
-            
             image_url = ""
 
             if image_file and image_file.filename != '':
@@ -207,29 +202,25 @@ def community():
                         image_url = f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{filename}"
                 except Exception as e:
                     print(f"S3 업로드 실패: {e}")
-                    return f"업로드 에러 발생: {e}"
 
-            # [변경] DB Insert 쿼리에 title, views(0), created_at(NOW()) 추가
             with conn.cursor() as cursor:
+                # views는 0, created_at은 DB 서버 시간(NOW())으로 저장
                 cursor.execute('''INSERT INTO posts (user_id, title, content, image_url, views, created_at) 
                                   VALUES (%s, %s, %s, %s, 0, NOW())''',
                             (session['user_id'], title, content, image_url))
             conn.commit()
             return redirect(url_for('community'))
-            
-        # [변경] GET 요청 시: 페이지네이션(Pagination) 로직 적용
-        # 이유: 글이 많아졌을 때 한 번에 다 불러오지 않고 끊어서 보여주기 위함
+
+        # GET 요청 처리 (목록 조회)
         page = request.args.get('page', 1, type=int)
-        limit = 5 # 한 페이지당 보여줄 글 개수
+        limit = 5
         offset = (page - 1) * limit
 
         with conn.cursor() as cursor:
-            # 1. 전체 글 개수 파악 (총 페이지 수 계산용)
             cursor.execute('SELECT COUNT(*) as count FROM posts')
             total_posts = cursor.fetchone()['count']
             total_pages = math.ceil(total_posts / limit)
 
-            # 2. 현재 페이지에 해당하는 글만 가져오기 (LIMIT, OFFSET 사용)
             cursor.execute('''
                 SELECT p.*, u.username 
                 FROM posts p JOIN users u ON p.user_id = u.id 
@@ -237,24 +228,27 @@ def community():
             ''', (limit, offset))
             posts = cursor.fetchall()
             
+            # [추가] 한국 시간(KST) 변환 로직
+            # DB에 저장된 시간(UTC)에 9시간을 더해서 포맷팅함
+            for post in posts:
+                if isinstance(post['created_at'], datetime.datetime):
+                    kst_time = post['created_at'] + timedelta(hours=9)
+                    post['created_at'] = kst_time.strftime('%Y-%m-%d %H:%M')
+
     finally:
         conn.close()
     
-    # [변경] 템플릿에 현재 페이지(curr_page)와 총 페이지(total_pages) 정보를 함께 전달
     return render_template('community.html', posts=posts, curr_page=page, total_pages=total_pages)
 
-# [추가] 게시글 상세 조회 API (모달용)
-# 기능: 게시글 내용과 댓글 목록을 JSON으로 반환하고 조회수를 1 증가시킴
+# [추가] 게시글 상세 조회 API (모달용) - 한국 시간 적용
 @app.route('/api/post/<int:post_id>')
 def get_post_detail(post_id):
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
-            # 1. 조회수 증가
             cursor.execute('UPDATE posts SET views = views + 1 WHERE id = %s', (post_id,))
             conn.commit()
 
-            # 2. 게시글 상세 정보 가져오기
             cursor.execute('''
                 SELECT p.*, u.username 
                 FROM posts p JOIN users u ON p.user_id = u.id 
@@ -262,7 +256,10 @@ def get_post_detail(post_id):
             ''', (post_id,))
             post = cursor.fetchone()
 
-            # 3. 해당 게시글의 댓글 목록 가져오기
+            # 게시글 시간 KST 변환
+            if post and isinstance(post['created_at'], datetime.datetime):
+                post['created_at'] = (post['created_at'] + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
+
             cursor.execute('''
                 SELECT c.*, u.username 
                 FROM comments c JOIN users u ON c.user_id = u.id 
@@ -270,12 +267,16 @@ def get_post_detail(post_id):
             ''', (post_id,))
             comments = cursor.fetchall()
             
+            # 댓글 시간 KST 변환
+            for c in comments:
+                if isinstance(c['created_at'], datetime.datetime):
+                    c['created_at'] = (c['created_at'] + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
+            
         return jsonify({'post': post, 'comments': comments})
     finally:
         conn.close()
 
 # [추가] 댓글 등록 API
-# 기능: 모달에서 입력한 댓글을 DB에 저장
 @app.route('/api/comment', methods=['POST'])
 def add_comment():
     if 'user_id' not in session:
@@ -296,13 +297,11 @@ def add_comment():
     finally:
         conn.close()
 
-# [기존 유지] 로그아웃
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# [기존 유지] 헬스 체크
 @app.route('/health')
 def health():
     return "OK", 200

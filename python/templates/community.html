@@ -9,7 +9,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     
     <style>
-        /* [기존 유지] 대시보드와 동일한 기본 스타일 */
+        /* [기존 스타일 유지] */
         body { background-color: #f8f9fc; }
         .sidebar { 
             min-height: 100vh; 
@@ -20,9 +20,8 @@
         .sidebar a { color: rgba(255,255,255,.8); text-decoration: none; padding: 15px; display: block; }
         .sidebar a:hover { color: #fff; background: rgba(255,255,255,.1); }
         .card { border: none; box-shadow: 0 .15rem 1.75rem 0 rgba(58,59,69,.15); }
-
-        /* [기존 유지] 커뮤니티 전용 스타일 */
         .table-hover tbody tr:hover { background-color: #f8f9fc; }
+        
         .thumb-box {
             width: 60px;
             height: 60px;
@@ -45,10 +44,6 @@
             margin-bottom: 2px;
         }
         .post-title:hover { color: #4e73df; }
-        .reply-count { color: #e74a3b; font-size: 0.8rem; font-weight: bold; margin-left: 4px; }
-        .badge-category { background-color: #e3e6f0; color: #5a5c69; font-size: 0.75rem; border: 1px solid #d1d3e2; }
-        
-        /* [추가] 클릭 가능한 행 스타일 */
         .clickable-row { cursor: pointer; }
     </style>
 </head>
@@ -110,17 +105,16 @@
                                 <td class="text-center text-muted fw-bold">{{ post.id }}</td>
                                 <td>
                                     <div class="d-flex align-items-center py-1">
+                                        {% if post.image_url %}
                                         <div class="thumb-box me-3">
-                                            {% if post.image_url %}
-                                                <img src="{{ post.image_url }}" alt="thumb">
-                                            {% else %}
-                                                <i class="fa-regular fa-image fa-lg text-secondary opacity-50"></i>
-                                            {% endif %}
+                                            <img src="{{ post.image_url }}" alt="thumb">
                                         </div>
+                                        {% endif %}
+                                        
                                         <div>
                                             <span class="post-title text-truncate" style="max-width: 400px;">
                                                 {{ post.title }}
-                                                </span>
+                                            </span>
                                             <div class="mt-1">
                                                 <span class="badge badge-category rounded-pill px-2">잡담</span>
                                             </div>
@@ -156,13 +150,11 @@
                         <li class="page-item {% if curr_page == 1 %}disabled{% endif %}">
                             <a class="page-link" href="?page={{ curr_page - 1 }}">이전</a>
                         </li>
-                        
                         {% for p in range(1, total_pages + 1) %}
                         <li class="page-item {% if p == curr_page %}active{% endif %}">
                             <a class="page-link" href="?page={{ p }}">{{ p }}</a>
                         </li>
                         {% endfor %}
-                        
                         <li class="page-item {% if curr_page == total_pages %}disabled{% endif %}">
                             <a class="page-link" href="?page={{ curr_page + 1 }}">다음</a>
                         </li>
@@ -226,9 +218,7 @@
                 
                 <div class="p-4 bg-light">
                     <h6 class="fw-bold mb-3"><i class="far fa-comment-dots me-2"></i>댓글</h6>
-                    
                     <div id="commentList" class="mb-3"></div>
-                    
                     <div class="d-flex gap-2">
                         <input type="hidden" id="currentPostId">
                         <input type="text" id="commentInput" class="form-control" placeholder="댓글을 남겨보세요...">
@@ -243,34 +233,25 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-    // 1. 게시글 클릭 시 상세 내용 가져오기 (AJAX)
-    function openReadModal(postId) {
-        // UI 초기화 (로딩중 상태)
-        $('#readTitle').text('로딩중...');
-        $('#readContent').text('');
-        $('#commentList').html('');
-        $('#readImageArea').addClass('d-none');
-        $('#currentPostId').val(postId);
-
-        // API 호출
-        $.get(`/api/post/${postId}`, function(data) {
+    // 1. [공통 함수] 게시글 데이터를 가져와서 모달 내용을 채우는 함수 (모달 띄우기 X)
+    function loadPostData(postId) {
+        return $.get(`/api/post/${postId}`, function(data) {
             const post = data.post;
             const comments = data.comments;
 
-            // 데이터 채우기
             $('#readTitle').text(post.title);
             $('#readAuthor').text(post.username);
             $('#readDate').text(post.created_at);
             $('#readViews').text(post.views);
             $('#readContent').text(post.content);
 
-            // 이미지가 있다면 표시
             if (post.image_url) {
                 $('#readImage').attr('src', post.image_url);
                 $('#readImageArea').removeClass('d-none');
+            } else {
+                $('#readImageArea').addClass('d-none');
             }
 
-            // 댓글 목록 렌더링
             let commentHtml = '';
             if (comments.length === 0) {
                 commentHtml = '<p class="text-muted small">아직 댓글이 없습니다. 첫 댓글을 남겨보세요!</p>';
@@ -290,13 +271,23 @@
                 });
             }
             $('#commentList').html(commentHtml);
+        });
+    }
 
-            // 모달창 띄우기
+    // 2. [클릭 이벤트] 게시글 클릭 -> 데이터 로드 완료 후 -> 모달 띄우기
+    function openReadModal(postId) {
+        // UI 초기화
+        $('#readTitle').text('로딩중...');
+        $('#commentList').html('');
+        $('#currentPostId').val(postId);
+
+        // 데이터 로드 후 모달 show
+        loadPostData(postId).done(function() {
             new bootstrap.Modal(document.getElementById('readModal')).show();
         });
     }
 
-    // 2. 댓글 등록 함수
+    // 3. [댓글 이벤트] 댓글 등록 -> 성공 시 -> 데이터만 갱신 (모달 show 호출 X)
     function submitComment() {
         const postId = $('#currentPostId').val();
         const content = $('#commentInput').val();
@@ -306,9 +297,10 @@
         $.post('/api/comment', { post_id: postId, content: content }, function(response) {
             if (response.result === 'success') {
                 $('#commentInput').val(''); // 입력창 비우기
-                // 모달 닫았다 열 필요 없이, 현재 모달 내용을 갱신하기 위해 함수 재호출
-                // (실무에선 댓글 부분만 부분 갱신하지만, 여기선 간편하게 재호출)
-                openReadModal(postId); 
+                
+                // [중요] 모달을 껐다 켜는 게 아니라, 내용만 다시 불러옵니다.
+                // 이러면 배경이 겹치는 버그가 사라집니다.
+                loadPostData(postId); 
             } else {
                 alert(response.msg);
             }
