@@ -88,7 +88,7 @@ resource "aws_launch_template" "app" {
   name = "${var.project_name}-template"
 
   # [중요] 여기에 찬규님이 만든 AMI ID를 입력하세요! (예: ami-0ab...)
-  image_id      = "ami-03807a9316b9abc1c" 
+  image_id      = "ami-0e96ceefd7f932989" 
   
   instance_type = "t3.micro"
   key_name      = var.key_name

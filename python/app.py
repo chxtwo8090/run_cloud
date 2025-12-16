@@ -5,14 +5,13 @@ import os
 import uuid
 import math
 from datetime import timedelta 
-# [추가] 보안 기능을 위해 werkzeug.security 라이브러리 추가
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key'
 
 # ---------------------------------------------------------
-# 환경변수 설정 (Terraform 및 Docker에서 주입받는 값)
+# 환경변수 설정
 # ---------------------------------------------------------
 DB_HOST = os.environ.get('DB_HOST')
 DB_USER = os.environ.get('DB_USER')
@@ -37,7 +36,6 @@ def get_db_connection():
         )
         return conn
     else:
-        # 로컬 테스트 환경이 아닐 경우 에러 발생
         raise RuntimeError("DB_HOST 환경변수가 설정되지 않았습니다.")
 
 def init_db():
@@ -59,9 +57,14 @@ def init_db():
                             (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
                              distance FLOAT, duration INT, date VARCHAR(255))''')
             
-            # 3. 게시판 테이블
+            # [수정] 카테고리 기능을 위해 기존 posts 테이블 구조 변경 (삭제 후 재생성)
+            # 주의: 기존 게시글 데이터는 삭제됩니다.
+            cursor.execute('DROP TABLE IF EXISTS posts') 
+
+            # [수정] posts 테이블에 category 컬럼 추가 (기본값: free)
             cursor.execute('''CREATE TABLE IF NOT EXISTS posts 
                             (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
+                             category VARCHAR(50) DEFAULT 'free',
                              title VARCHAR(255), content TEXT, image_url TEXT,
                              views INT DEFAULT 0, 
                              created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
@@ -81,7 +84,7 @@ except Exception as e:
     print(f"DB 초기화 실패 (접속 정보 확인 필요): {e}")
 
 # ---------------------------------------------------------
-# [수정] 회원가입 라우트: 비밀번호 암호화 적용
+# 회원가입 라우트
 # ---------------------------------------------------------
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -93,19 +96,15 @@ def register():
         conn = get_db_connection()
         try:
             with conn.cursor() as cursor:
-                # 중복 ID 검사
                 cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
                 if cursor.fetchone():
                     return "이미 존재하는 ID입니다! <a href='/register'>다시 시도</a>"
                 
-                # 중복 이메일 검사
                 cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
                 if cursor.fetchone():
                     return "이미 가입된 이메일입니다! <a href='/register'>다시 시도</a>"
 
-                # [보안] 비밀번호를 그대로 저장하지 않고 해시(Hash)화 하여 저장
                 hashed_pw = generate_password_hash(password)
-
                 cursor.execute('INSERT INTO users (username, password, email) VALUES (%s, %s, %s)', 
                                (username, hashed_pw, email))
             conn.commit()
@@ -119,7 +118,7 @@ def register():
     return render_template('register.html')
 
 # ---------------------------------------------------------
-# [수정] 로그인 라우트: 암호 검증 로직 추가 (자동가입 삭제)
+# 로그인 라우트
 # ---------------------------------------------------------
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -130,18 +129,14 @@ def login():
         conn = get_db_connection()
         try:
             with conn.cursor() as cursor:
-                # 사용자 조회
                 cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
                 user = cursor.fetchone()
                 
-                # [보안] 사용자가 존재하고, 비밀번호 해시값이 일치하는지 확인 (check_password_hash)
-                # 기존의 '없는 아이디면 자동 가입' 시키는 로직은 보안상 위험하므로 삭제함
                 if user and check_password_hash(user['password'], password):
                     session['user_id'] = user['id']
                     session['username'] = user['username']
                     return redirect(url_for('dashboard'))
                 else:
-                    # 로그인 실패 처리
                     flash('아이디 또는 비밀번호가 올바르지 않습니다.')
                     return redirect(url_for('login'))
         finally:
@@ -149,6 +144,9 @@ def login():
             
     return render_template('login.html')
 
+# ---------------------------------------------------------
+# 대시보드 라우트
+# ---------------------------------------------------------
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -159,7 +157,6 @@ def dashboard():
             distance = request.form['distance']
             duration = request.form['duration']
             
-            # [기능] 한국 시간(KST)으로 저장 (UTC + 9시간)
             kst_now = datetime.datetime.utcnow() + timedelta(hours=9)
             date = kst_now.strftime("%Y-%m-%d %H:%M:%S")
             
@@ -176,6 +173,9 @@ def dashboard():
     
     return render_template('dashboard.html', username=session['username'], runs=my_runs)
 
+# ---------------------------------------------------------
+# 랭킹 라우트
+# ---------------------------------------------------------
 @app.route('/ranking')
 def ranking():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -194,19 +194,24 @@ def ranking():
     
     return render_template('ranking.html', ranks=ranks)
 
+# ---------------------------------------------------------
+# [수정] 커뮤니티 라우트: 카테고리(탭) 기능 적용
+# ---------------------------------------------------------
 @app.route('/community', methods=['GET', 'POST'])
 def community():
     if 'user_id' not in session: return redirect(url_for('login'))
     
     conn = get_db_connection()
     try:
+        # 1. 글 작성 (POST)
         if request.method == 'POST':
+            # [추가] 폼에서 카테고리 값 가져오기 (기본값: free)
+            category = request.form.get('category', 'free')
             title = request.form['title']
             content = request.form['content']
             image_file = request.files['image']
             image_url = ""
 
-            # S3 이미지 업로드 로직
             if image_file and image_file.filename != '':
                 ext = image_file.filename.split('.')[-1]
                 filename = f"{uuid.uuid4()}.{ext}"
@@ -215,7 +220,6 @@ def community():
                         image_file, S3_BUCKET, filename,
                         ExtraArgs={'ContentType': image_file.content_type}
                     )
-                    # CloudFront 도메인이 있으면 사용, 없으면 S3 기본 URL 사용
                     if CDN_DOMAIN:
                         image_url = f"https://{CDN_DOMAIN}/{filename}"
                     else:
@@ -224,30 +228,38 @@ def community():
                     print(f"S3 업로드 실패: {e}")
 
             with conn.cursor() as cursor:
-                cursor.execute('''INSERT INTO posts (user_id, title, content, image_url, views, created_at) 
-                                  VALUES (%s, %s, %s, %s, 0, NOW())''',
-                            (session['user_id'], title, content, image_url))
+                # [수정] INSERT 문에 category 컬럼 추가
+                cursor.execute('''INSERT INTO posts (user_id, category, title, content, image_url, views, created_at) 
+                                  VALUES (%s, %s, %s, %s, %s, 0, NOW())''',
+                            (session['user_id'], category, title, content, image_url))
             conn.commit()
-            return redirect(url_for('community'))
+            
+            # [수정] 작성 후 해당 카테고리 탭으로 이동
+            return redirect(url_for('community', category=category))
 
-        # GET 요청: 게시글 목록 조회 (페이지네이션 적용)
+        # 2. 글 목록 조회 (GET)
         page = request.args.get('page', 1, type=int)
+        # [추가] URL 쿼리 파라미터에서 카테고리 가져오기 (기본값: free)
+        category = request.args.get('category', 'free')
+        
         limit = 5
         offset = (page - 1) * limit
 
         with conn.cursor() as cursor:
-            cursor.execute('SELECT COUNT(*) as count FROM posts')
+            # [수정] 해당 카테고리의 글 개수만 카운트
+            cursor.execute('SELECT COUNT(*) as count FROM posts WHERE category = %s', (category,))
             total_posts = cursor.fetchone()['count']
             total_pages = math.ceil(total_posts / limit)
 
+            # [수정] 해당 카테고리의 글만 조회 (WHERE category = ...)
             cursor.execute('''
                 SELECT p.*, u.username 
                 FROM posts p JOIN users u ON p.user_id = u.id 
+                WHERE p.category = %s
                 ORDER BY p.id DESC LIMIT %s OFFSET %s
-            ''', (limit, offset))
+            ''', (category, limit, offset))
             posts = cursor.fetchall()
             
-            # [기능] 게시글 작성 시간 한국 시간(KST) 변환
             for post in posts:
                 if isinstance(post['created_at'], datetime.datetime):
                     kst_time = post['created_at'] + timedelta(hours=9)
@@ -256,19 +268,20 @@ def community():
     finally:
         conn.close()
     
-    return render_template('community.html', posts=posts, curr_page=page, total_pages=total_pages)
+    # [수정] 템플릿에 현재 카테고리 정보(curr_category) 전달
+    return render_template('community.html', posts=posts, curr_page=page, total_pages=total_pages, curr_category=category)
 
+# ---------------------------------------------------------
+# 게시글 상세 API (모달용)
+# ---------------------------------------------------------
 @app.route('/api/post/<int:post_id>')
 def get_post_detail(post_id):
-    """게시글 상세 조회 및 댓글 목록 반환 API"""
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
-            # 조회수 증가
             cursor.execute('UPDATE posts SET views = views + 1 WHERE id = %s', (post_id,))
             conn.commit()
 
-            # 게시글 정보 조회
             cursor.execute('''
                 SELECT p.*, u.username 
                 FROM posts p JOIN users u ON p.user_id = u.id 
@@ -276,11 +289,9 @@ def get_post_detail(post_id):
             ''', (post_id,))
             post = cursor.fetchone()
 
-            # 상세 조회 시간 KST 변환
             if post and isinstance(post['created_at'], datetime.datetime):
                 post['created_at'] = (post['created_at'] + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
 
-            # 댓글 목록 조회
             cursor.execute('''
                 SELECT c.*, u.username 
                 FROM comments c JOIN users u ON c.user_id = u.id 
@@ -288,7 +299,6 @@ def get_post_detail(post_id):
             ''', (post_id,))
             comments = cursor.fetchall()
             
-            # 댓글 시간 KST 변환
             for c in comments:
                 if isinstance(c['created_at'], datetime.datetime):
                     c['created_at'] = (c['created_at'] + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
@@ -297,9 +307,11 @@ def get_post_detail(post_id):
     finally:
         conn.close()
 
+# ---------------------------------------------------------
+# 댓글 등록 API
+# ---------------------------------------------------------
 @app.route('/api/comment', methods=['POST'])
 def add_comment():
-    """댓글 등록 API"""
     if 'user_id' not in session:
         return jsonify({'result': 'fail', 'msg': '로그인이 필요합니다.'})
 

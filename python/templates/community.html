@@ -9,7 +9,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     
     <style>
-        /* [기존 스타일 유지] */
+        /* [기존 스타일 유지] - 건드리지 않음 */
         body { background-color: #f8f9fc; }
         .sidebar { 
             min-height: 100vh; 
@@ -45,6 +45,10 @@
         }
         .post-title:hover { color: #4e73df; }
         .clickable-row { cursor: pointer; }
+
+        /* [추가] 탭 스타일 미세 조정 (기존 디자인과 어울리게) */
+        .nav-tabs .nav-link { color: #4e73df; font-weight: 600; }
+        .nav-tabs .nav-link.active { color: #224abe; font-weight: bold; border-top: 3px solid #4e73df; }
     </style>
 </head>
 <body>
@@ -70,17 +74,44 @@
         
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
-                <h1 class="h3 mb-0 text-gray-800 fw-bold">자유 게시판</h1>
-                <p class="mb-0 text-muted small">자유롭게 이야기를 나누는 공간입니다.</p>
+                <h1 class="h3 mb-0 text-gray-800 fw-bold">
+                    {% if curr_category == 'free' %}🗣️ 자유 게시판
+                    {% elif curr_category == 'cert' %}🏃 러닝 인증
+                    {% elif curr_category == 'qna' %}❓ 질문 답변
+                    {% elif curr_category == 'info' %}🍯 정보 공유
+                    {% else %}💬 커뮤니티{% endif %}
+                </h1>
+                <p class="mb-0 text-muted small">러너들과 소통하는 공간입니다.</p>
             </div>
             <button class="btn btn-primary shadow-sm fw-bold" data-bs-toggle="modal" data-bs-target="#writeModal">
                 <i class="fas fa-pen me-2"></i>새 글 쓰기
             </button>
         </div>
 
+        <ul class="nav nav-tabs mb-3 border-bottom-0">
+            <li class="nav-item">
+                <a class="nav-link {% if curr_category == 'free' %}active{% endif %}" href="{{ url_for('community', category='free') }}">자유게시판</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if curr_category == 'cert' %}active{% endif %}" href="{{ url_for('community', category='cert') }}">러닝인증</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if curr_category == 'qna' %}active{% endif %}" href="{{ url_for('community', category='qna') }}">질문답변</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if curr_category == 'info' %}active{% endif %}" href="{{ url_for('community', category='info') }}">정보공유</a>
+            </li>
+        </ul>
+
         <div class="card shadow mb-4">
             <div class="card-header py-3 bg-white d-flex flex-row align-items-center justify-content-between">
-                <h6 class="m-0 fw-bold text-primary">전체 글 목록</h6>
+                <h6 class="m-0 fw-bold text-primary">
+                    {% if curr_category == 'free' %}자유게시판 목록
+                    {% elif curr_category == 'cert' %}인증 게시글 목록
+                    {% elif curr_category == 'qna' %}질문과 답변 목록
+                    {% elif curr_category == 'info' %}정보 공유 목록
+                    {% endif %}
+                </h6>
                 <div class="dropdown no-arrow">
                     <button class="btn btn-sm btn-light border" type="button">
                         <i class="fas fa-sort-amount-down me-1"></i> 최신순
@@ -115,7 +146,6 @@
                                             <span class="post-title text-truncate" style="max-width: 400px;">
                                                 {{ post.title }}
                                             </span>
-                                           
                                         </div>
                                     </div>
                                 </td>
@@ -146,15 +176,15 @@
                 <nav>
                     <ul class="pagination justify-content-center mb-0">
                         <li class="page-item {% if curr_page == 1 %}disabled{% endif %}">
-                            <a class="page-link" href="?page={{ curr_page - 1 }}">이전</a>
+                            <a class="page-link" href="{{ url_for('community', page=curr_page - 1, category=curr_category) }}">이전</a>
                         </li>
                         {% for p in range(1, total_pages + 1) %}
                         <li class="page-item {% if p == curr_page %}active{% endif %}">
-                            <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+                            <a class="page-link" href="{{ url_for('community', page=p, category=curr_category) }}">{{ p }}</a>
                         </li>
                         {% endfor %}
                         <li class="page-item {% if curr_page == total_pages %}disabled{% endif %}">
-                            <a class="page-link" href="?page={{ curr_page + 1 }}">다음</a>
+                            <a class="page-link" href="{{ url_for('community', page=curr_page + 1, category=curr_category) }}">다음</a>
                         </li>
                     </ul>
                 </nav>
@@ -173,6 +203,17 @@
             </div>
             <form action="/community" method="post" enctype="multipart/form-data">
                 <div class="modal-body p-4">
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-secondary">카테고리</label>
+                        <select class="form-select" name="category">
+                            <option value="free" {% if curr_category == 'free' %}selected{% endif %}>🗣️ 자유게시판</option>
+                            <option value="cert" {% if curr_category == 'cert' %}selected{% endif %}>🏃 러닝인증</option>
+                            <option value="qna" {% if curr_category == 'qna' %}selected{% endif %}>❓ 질문답변</option>
+                            <option value="info" {% if curr_category == 'info' %}selected{% endif %}>🍯 정보공유</option>
+                        </select>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label fw-bold text-secondary">제목</label>
                         <input type="text" name="title" class="form-control" placeholder="제목을 입력하세요" required>
@@ -231,7 +272,9 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-    // 1. [공통 함수] 게시글 데이터를 가져와서 모달 내용을 채우는 함수 (모달 띄우기 X)
+    // [기존 스크립트 100% 유지]
+    
+    // 1. [공통 함수] 게시글 데이터를 가져와서 모달 내용을 채우는 함수
     function loadPostData(postId) {
         return $.get(`/api/post/${postId}`, function(data) {
             const post = data.post;
@@ -274,18 +317,16 @@
 
     // 2. [클릭 이벤트] 게시글 클릭 -> 데이터 로드 완료 후 -> 모달 띄우기
     function openReadModal(postId) {
-        // UI 초기화
         $('#readTitle').text('로딩중...');
         $('#commentList').html('');
         $('#currentPostId').val(postId);
 
-        // 데이터 로드 후 모달 show
         loadPostData(postId).done(function() {
             new bootstrap.Modal(document.getElementById('readModal')).show();
         });
     }
 
-    // 3. [댓글 이벤트] 댓글 등록 -> 성공 시 -> 데이터만 갱신 (모달 show 호출 X)
+    // 3. [댓글 이벤트] 댓글 등록
     function submitComment() {
         const postId = $('#currentPostId').val();
         const content = $('#commentInput').val();
@@ -294,10 +335,7 @@
 
         $.post('/api/comment', { post_id: postId, content: content }, function(response) {
             if (response.result === 'success') {
-                $('#commentInput').val(''); // 입력창 비우기
-                
-                // [중요] 모달을 껐다 켜는 게 아니라, 내용만 다시 불러옵니다.
-                // 이러면 배경이 겹치는 버그가 사라집니다.
+                $('#commentInput').val(''); 
                 loadPostData(postId); 
             } else {
                 alert(response.msg);
