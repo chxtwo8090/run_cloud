@@ -1,15 +1,19 @@
-from flask import Flask, render_template, request, redirect, session, url_for, jsonify
+from flask import Flask, render_template, request, redirect, session, url_for, jsonify, flash
 import pymysql, boto3
 import datetime
 import os
 import uuid
 import math
-from datetime import timedelta # [추가] 한국 시간(KST) 계산을 위해 추가
+from datetime import timedelta 
+# [추가] 보안 기능을 위해 werkzeug.security 라이브러리 추가
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key'
 
-# 환경변수에서 DB 접속 정보 가져오기 (Terraform이 넣어줄 값들)
+# ---------------------------------------------------------
+# 환경변수 설정 (Terraform 및 Docker에서 주입받는 값)
+# ---------------------------------------------------------
 DB_HOST = os.environ.get('DB_HOST')
 DB_USER = os.environ.get('DB_USER')
 DB_PASSWORD = os.environ.get('DB_PASSWORD')
@@ -33,38 +37,36 @@ def get_db_connection():
         )
         return conn
     else:
-        raise RuntimeError("DB_HOST 환경변수가 없습니다! 로컬 테스트라면 sqlite 코드를 유지해야 하지만, 실습 편의상 생략합니다.")
+        # 로컬 테스트 환경이 아닐 경우 에러 발생
+        raise RuntimeError("DB_HOST 환경변수가 설정되지 않았습니다.")
 
 def init_db():
+    """DB 테이블 초기화 함수"""
     if not DB_HOST: return
 
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
-            # [수정] 게시판 기능 확장을 위해 기존 테이블 삭제 후 재생성 (개발 단계이므로 DROP 사용)
-            # 이유: 기존 posts 테이블에는 title, views 컬럼이 없어서 에러가 발생함
-
-
-            # 사용자 테이블 (기존 유지)
+            # 1. 사용자 테이블
             cursor.execute('''CREATE TABLE IF NOT EXISTS users 
                             (id INT AUTO_INCREMENT PRIMARY KEY,
-                            username VARCHAR(255),
-                            password VARCHAR(255),
-                            email VARCHAR(255))''')
+                            username VARCHAR(255) NOT NULL UNIQUE,
+                            password VARCHAR(255) NOT NULL,
+                            email VARCHAR(255) NOT NULL UNIQUE)''')
             
-            # 러닝 기록 테이블 (기존 유지)
+            # 2. 러닝 기록 테이블
             cursor.execute('''CREATE TABLE IF NOT EXISTS runs 
                             (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
                              distance FLOAT, duration INT, date VARCHAR(255))''')
             
-            # [재생성] 게시판 테이블 (제목, 조회수, 작성일 추가)
+            # 3. 게시판 테이블
             cursor.execute('''CREATE TABLE IF NOT EXISTS posts 
                             (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
                              title VARCHAR(255), content TEXT, image_url TEXT,
                              views INT DEFAULT 0, 
                              created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
             
-            # [재생성] 댓글 테이블 (신규 추가)
+            # 4. 댓글 테이블
             cursor.execute('''CREATE TABLE IF NOT EXISTS comments 
                             (id INT AUTO_INCREMENT PRIMARY KEY, post_id INT, user_id INT,
                              content TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
@@ -78,6 +80,9 @@ try:
 except Exception as e:
     print(f"DB 초기화 실패 (접속 정보 확인 필요): {e}")
 
+# ---------------------------------------------------------
+# [수정] 회원가입 라우트: 비밀번호 암호화 적용
+# ---------------------------------------------------------
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -88,16 +93,21 @@ def register():
         conn = get_db_connection()
         try:
             with conn.cursor() as cursor:
+                # 중복 ID 검사
                 cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
                 if cursor.fetchone():
                     return "이미 존재하는 ID입니다! <a href='/register'>다시 시도</a>"
                 
+                # 중복 이메일 검사
                 cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
                 if cursor.fetchone():
                     return "이미 가입된 이메일입니다! <a href='/register'>다시 시도</a>"
 
+                # [보안] 비밀번호를 그대로 저장하지 않고 해시(Hash)화 하여 저장
+                hashed_pw = generate_password_hash(password)
+
                 cursor.execute('INSERT INTO users (username, password, email) VALUES (%s, %s, %s)', 
-                               (username, password, email))
+                               (username, hashed_pw, email))
             conn.commit()
         except Exception as e:
             return f"회원가입 에러: {e}"
@@ -108,25 +118,32 @@ def register():
         
     return render_template('register.html')
 
+# ---------------------------------------------------------
+# [수정] 로그인 라우트: 암호 검증 로직 추가 (자동가입 삭제)
+# ---------------------------------------------------------
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
+        password = request.form['password']
+        
         conn = get_db_connection()
         try:
             with conn.cursor() as cursor:
+                # 사용자 조회
                 cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
                 user = cursor.fetchone()
                 
-                if not user:
-                    cursor.execute('INSERT INTO users (username, password) VALUES (%s, %s)', (username, '1234'))
-                    conn.commit()
-                    cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
-                    user = cursor.fetchone()
-            
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            return redirect(url_for('dashboard'))
+                # [보안] 사용자가 존재하고, 비밀번호 해시값이 일치하는지 확인 (check_password_hash)
+                # 기존의 '없는 아이디면 자동 가입' 시키는 로직은 보안상 위험하므로 삭제함
+                if user and check_password_hash(user['password'], password):
+                    session['user_id'] = user['id']
+                    session['username'] = user['username']
+                    return redirect(url_for('dashboard'))
+                else:
+                    # 로그인 실패 처리
+                    flash('아이디 또는 비밀번호가 올바르지 않습니다.')
+                    return redirect(url_for('login'))
         finally:
             conn.close()
             
@@ -142,8 +159,7 @@ def dashboard():
             distance = request.form['distance']
             duration = request.form['duration']
             
-            # [수정] 한국 시간(KST)으로 저장하기
-            # UTC 현재 시간 + 9시간
+            # [기능] 한국 시간(KST)으로 저장 (UTC + 9시간)
             kst_now = datetime.datetime.utcnow() + timedelta(hours=9)
             date = kst_now.strftime("%Y-%m-%d %H:%M:%S")
             
@@ -178,7 +194,6 @@ def ranking():
     
     return render_template('ranking.html', ranks=ranks)
 
-# [수정] 커뮤니티 라우트: 제목 저장, 페이지네이션, 한국 시간 적용
 @app.route('/community', methods=['GET', 'POST'])
 def community():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -191,6 +206,7 @@ def community():
             image_file = request.files['image']
             image_url = ""
 
+            # S3 이미지 업로드 로직
             if image_file and image_file.filename != '':
                 ext = image_file.filename.split('.')[-1]
                 filename = f"{uuid.uuid4()}.{ext}"
@@ -199,6 +215,7 @@ def community():
                         image_file, S3_BUCKET, filename,
                         ExtraArgs={'ContentType': image_file.content_type}
                     )
+                    # CloudFront 도메인이 있으면 사용, 없으면 S3 기본 URL 사용
                     if CDN_DOMAIN:
                         image_url = f"https://{CDN_DOMAIN}/{filename}"
                     else:
@@ -207,14 +224,13 @@ def community():
                     print(f"S3 업로드 실패: {e}")
 
             with conn.cursor() as cursor:
-                # views는 0, created_at은 DB 서버 시간(NOW())으로 저장
                 cursor.execute('''INSERT INTO posts (user_id, title, content, image_url, views, created_at) 
                                   VALUES (%s, %s, %s, %s, 0, NOW())''',
                             (session['user_id'], title, content, image_url))
             conn.commit()
             return redirect(url_for('community'))
 
-        # GET 요청 처리 (목록 조회)
+        # GET 요청: 게시글 목록 조회 (페이지네이션 적용)
         page = request.args.get('page', 1, type=int)
         limit = 5
         offset = (page - 1) * limit
@@ -231,8 +247,7 @@ def community():
             ''', (limit, offset))
             posts = cursor.fetchall()
             
-            # [추가] 한국 시간(KST) 변환 로직
-            # DB에 저장된 시간(UTC)에 9시간을 더해서 포맷팅함
+            # [기능] 게시글 작성 시간 한국 시간(KST) 변환
             for post in posts:
                 if isinstance(post['created_at'], datetime.datetime):
                     kst_time = post['created_at'] + timedelta(hours=9)
@@ -243,15 +258,17 @@ def community():
     
     return render_template('community.html', posts=posts, curr_page=page, total_pages=total_pages)
 
-# [추가] 게시글 상세 조회 API (모달용) - 한국 시간 적용
 @app.route('/api/post/<int:post_id>')
 def get_post_detail(post_id):
+    """게시글 상세 조회 및 댓글 목록 반환 API"""
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
+            # 조회수 증가
             cursor.execute('UPDATE posts SET views = views + 1 WHERE id = %s', (post_id,))
             conn.commit()
 
+            # 게시글 정보 조회
             cursor.execute('''
                 SELECT p.*, u.username 
                 FROM posts p JOIN users u ON p.user_id = u.id 
@@ -259,10 +276,11 @@ def get_post_detail(post_id):
             ''', (post_id,))
             post = cursor.fetchone()
 
-            # 게시글 시간 KST 변환
+            # 상세 조회 시간 KST 변환
             if post and isinstance(post['created_at'], datetime.datetime):
                 post['created_at'] = (post['created_at'] + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
 
+            # 댓글 목록 조회
             cursor.execute('''
                 SELECT c.*, u.username 
                 FROM comments c JOIN users u ON c.user_id = u.id 
@@ -279,9 +297,9 @@ def get_post_detail(post_id):
     finally:
         conn.close()
 
-# [추가] 댓글 등록 API
 @app.route('/api/comment', methods=['POST'])
 def add_comment():
+    """댓글 등록 API"""
     if 'user_id' not in session:
         return jsonify({'result': 'fail', 'msg': '로그인이 필요합니다.'})
 
