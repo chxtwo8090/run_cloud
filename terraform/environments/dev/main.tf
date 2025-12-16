@@ -55,6 +55,7 @@ module "compute" {
   source = "../../modules/compute"
 
   project_name = "run-cloud"
+  key_name = var.key_name
 
   # [중요] 서브넷 리스트(List) 중에서 0번째(첫 번째) 서브넷을 골라서 전달
   public_subnet_id  = module.network.public_subnet_ids[0]

@@ -30,6 +30,11 @@ variable "target_group_arn" {
   type        = string
 }
 
+variable "key_name" {
+  description = "EC2 Key Pair"
+  type        = string
+}
+
 variable "db_endpoint" { type = string }
 variable "db_name" { type = string }
 variable "db_username" { type = string }

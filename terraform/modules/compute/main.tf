@@ -1,19 +1,19 @@
-# 1. SSH 키 페어 생성
-resource "tls_private_key" "pk" {
-  algorithm = "RSA"
-  rsa_bits  = 4096
-}
+# # 1. SSH 키 페어 생성
+# resource "tls_private_key" "pk" {
+#   algorithm = "RSA"
+#   rsa_bits  = 4096
+# }
 
-resource "aws_key_pair" "kp" {
-  key_name   = "${var.project_name}-key"
-  public_key = tls_private_key.pk.public_key_openssh
-}
+# resource "aws_key_pair" "kp" {
+#   key_name   = "${var.project_name}-key"
+#   public_key = tls_private_key.pk.public_key_openssh
+# }
 
-resource "local_file" "ssh_key" {
-  filename        = "${path.module}/../../${var.project_name}-key.pem"
-  content         = tls_private_key.pk.private_key_pem
-  file_permission = "0400"
-}
+# resource "local_file" "ssh_key" {
+#   filename        = "${path.module}/../../${var.project_name}-key.pem"
+#   content         = tls_private_key.pk.private_key_pem
+#   file_permission = "0400"
+# }
 
 # 2. Bastion Host (이미지 검색 로직 유지 - 배스천은 최신 이미지 써도 무방)
 data "aws_ami" "amazon_linux_2023" {
@@ -30,7 +30,7 @@ resource "aws_instance" "bastion" {
   instance_type               = "t3.micro"
   subnet_id                   = var.public_subnet_id
   vpc_security_group_ids      = [var.sg_bastion_id]
-  key_name                    = aws_key_pair.kp.key_name
+  key_name                    = var.key_name
   associate_public_ip_address = true
 
   tags = {
@@ -91,7 +91,7 @@ resource "aws_launch_template" "app" {
   image_id      = "ami-03807a9316b9abc1c" 
   
   instance_type = "t3.micro"
-  key_name      = aws_key_pair.kp.key_name
+  key_name      = var.key_name
   vpc_security_group_ids = [var.sg_app_id]
 
   iam_instance_profile {
