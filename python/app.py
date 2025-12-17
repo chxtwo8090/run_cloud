@@ -120,16 +120,13 @@ def login():
             conn.close()
     return render_template('login.html')
 
-# ---------------------------------------------------------
-# [수정] 대시보드 라우트: 랭킹 및 누적 거리 계산 로직 추가
-# ---------------------------------------------------------
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     if 'user_id' not in session: return redirect(url_for('login'))
     
     conn = get_db_connection()
     try:
-        # 기록 저장 로직 (POST)
+        # 기록 저장 로직 (POST) - 기존 유지
         if request.method == 'POST':
             distance = request.form['distance']
             duration = request.form['duration']
@@ -143,16 +140,15 @@ def dashboard():
             conn.commit()
             
         with conn.cursor() as cursor:
-            # 1. 내 기록 가져오기
+            # 1. 내 기록 가져오기 - 기존 유지
             cursor.execute('SELECT * FROM runs WHERE user_id = %s ORDER BY id DESC', (session['user_id'],))
             my_runs = cursor.fetchall()
             
-            # 2. [추가] 누적 거리 계산
+            # 2. 누적 거리 계산 - 기존 유지
             total_km = sum(run['distance'] for run in my_runs)
-            total_km = round(total_km, 2) # 소수점 2자리까지
+            total_km = round(total_km, 2)
             
-            # 3. [추가] 내 랭킹 계산
-            # 전체 유저의 거리 합계 조회 후 정렬
+            # 3. 내 랭킹 계산 - 기존 유지
             cursor.execute('''
                 SELECT user_id, SUM(distance) as total_dist 
                 FROM runs 
@@ -161,22 +157,41 @@ def dashboard():
             ''')
             all_ranks = cursor.fetchall()
             
-            # 리스트에서 내 순위(index) 찾기
             my_rank = "-"
             for index, rank_info in enumerate(all_ranks):
                 if rank_info['user_id'] == session['user_id']:
                     my_rank = index + 1
                     break
+            
+            # ---------------------------------------------------------
+            # [추가] 월별 통계 데이터 가공 로직 (그래프용)
+            # ---------------------------------------------------------
+            monthly_stats = {}
+            for run in my_runs:
+                # 날짜 문자열(YYYY-MM-DD HH:MM:SS)에서 YYYY-MM 추출
+                month_key = run['date'][:7] 
+                if month_key not in monthly_stats:
+                    monthly_stats[month_key] = 0
+                monthly_stats[month_key] += run['distance']
+            
+            # 월 순서대로 정렬
+            sorted_months = sorted(monthly_stats.keys())
+            
+            # 차트에 들어갈 데이터 리스트 생성
+            chart_labels = sorted_months  # X축: ['2025-09', '2025-10', ...]
+            chart_data = [round(monthly_stats[m], 2) for m in sorted_months] # Y축: [10.5, 20.0, ...]
 
     finally:
         conn.close()
     
-    # 템플릿에 my_rank와 total_km 전달
+    # 템플릿에 chart_labels와 chart_data 추가 전달
     return render_template('dashboard.html', 
                            username=session['username'], 
                            runs=my_runs, 
                            my_rank=my_rank, 
-                           total_km=total_km)
+                           total_km=total_km,
+                           chart_labels=chart_labels,
+                           chart_data=chart_data)
 
 @app.route('/ranking')
 def ranking():
