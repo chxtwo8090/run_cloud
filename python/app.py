@@ -48,12 +48,14 @@ def init_db():
                             (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
                              distance FLOAT, duration INT, date VARCHAR(255))''')
             
+            # [스키마 반영] 이미 ALTER로 추가했지만, 코드상 명시를 위해 포함
             cursor.execute('''CREATE TABLE IF NOT EXISTS posts 
                             (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, 
                              category VARCHAR(50) DEFAULT 'free',
                              title VARCHAR(255), content TEXT, image_url TEXT,
                              views INT DEFAULT 0, 
-                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                             is_deleted BOOLEAN DEFAULT FALSE)''')
             
             cursor.execute('''CREATE TABLE IF NOT EXISTS comments 
                             (id INT AUTO_INCREMENT PRIMARY KEY, post_id INT, user_id INT,
@@ -126,7 +128,7 @@ def dashboard():
     
     conn = get_db_connection()
     try:
-        # 기록 저장 로직 (POST) - 기존 유지
+        # 기록 저장 로직
         if request.method == 'POST':
             distance = request.form['distance']
             duration = request.form['duration']
@@ -140,15 +142,15 @@ def dashboard():
             conn.commit()
             
         with conn.cursor() as cursor:
-            # 1. 내 기록 가져오기 - 기존 유지
+            # 1. 내 기록 가져오기
             cursor.execute('SELECT * FROM runs WHERE user_id = %s ORDER BY id DESC', (session['user_id'],))
             my_runs = cursor.fetchall()
             
-            # 2. 누적 거리 계산 - 기존 유지
+            # 2. 누적 거리 계산
             total_km = sum(run['distance'] for run in my_runs)
             total_km = round(total_km, 2)
             
-            # 3. 내 랭킹 계산 - 기존 유지
+            # 3. 내 랭킹 계산
             cursor.execute('''
                 SELECT user_id, SUM(distance) as total_dist 
                 FROM runs 
@@ -163,28 +165,23 @@ def dashboard():
                     my_rank = index + 1
                     break
             
-            # ---------------------------------------------------------
-            # [추가] 월별 통계 데이터 가공 로직 (그래프용)
-            # ---------------------------------------------------------
+            # 4. [그래프용] 월별 통계 데이터 가공
             monthly_stats = {}
             for run in my_runs:
-                # 날짜 문자열(YYYY-MM-DD HH:MM:SS)에서 YYYY-MM 추출
-                month_key = run['date'][:7] 
+                month_key = run['date'][:7] # YYYY-MM 추출
                 if month_key not in monthly_stats:
                     monthly_stats[month_key] = 0
                 monthly_stats[month_key] += run['distance']
             
             # 월 순서대로 정렬
             sorted_months = sorted(monthly_stats.keys())
-            
-            # 차트에 들어갈 데이터 리스트 생성
-            chart_labels = sorted_months  # X축: ['2025-09', '2025-10', ...]
-            chart_data = [round(monthly_stats[m], 2) for m in sorted_months] # Y축: [10.5, 20.0, ...]
+            chart_labels = sorted_months
+            chart_data = [round(monthly_stats[m], 2) for m in sorted_months]
 
     finally:
         conn.close()
     
-    # 템플릿에 chart_labels와 chart_data 추가 전달
+    # 템플릿에 차트 데이터 전달
     return render_template('dashboard.html', 
                            username=session['username'], 
                            runs=my_runs, 
@@ -234,6 +231,7 @@ def community():
                 except Exception as e: print(f"S3 업로드 실패: {e}")
 
             with conn.cursor() as cursor:
+                # [작성] is_deleted는 기본값이 FALSE이므로 별도 지정 불필요
                 cursor.execute('''INSERT INTO posts (user_id, category, title, content, image_url, views, created_at) 
                                   VALUES (%s, %s, %s, %s, %s, 0, NOW())''',
                             (session['user_id'], category, title, content, image_url))
@@ -246,14 +244,16 @@ def community():
         offset = (page - 1) * limit
 
         with conn.cursor() as cursor:
-            cursor.execute('SELECT COUNT(*) as count FROM posts WHERE category = %s', (category,))
+            # [조회] 삭제되지 않은 글만 카운트 (Soft Delete 적용)
+            cursor.execute('SELECT COUNT(*) as count FROM posts WHERE category = %s AND is_deleted = FALSE', (category,))
             total_posts = cursor.fetchone()['count']
             total_pages = math.ceil(total_posts / limit)
 
+            # [조회] 삭제되지 않은 글만 목록에 표시
             cursor.execute('''
                 SELECT p.*, u.username 
                 FROM posts p JOIN users u ON p.user_id = u.id 
-                WHERE p.category = %s
+                WHERE p.category = %s AND p.is_deleted = FALSE
                 ORDER BY p.id DESC LIMIT %s OFFSET %s
             ''', (category, limit, offset))
             posts = cursor.fetchall()
@@ -271,18 +271,89 @@ def get_post_detail(post_id):
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
-            cursor.execute('UPDATE posts SET views = views + 1 WHERE id = %s', (post_id,))
-            conn.commit()
-            cursor.execute('''SELECT p.*, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.id = %s''', (post_id,))
+            # [상세] 삭제된 글은 조회되지 않도록 처리
+            cursor.execute('''
+                SELECT p.*, u.username 
+                FROM posts p JOIN users u ON p.user_id = u.id 
+                WHERE p.id = %s AND p.is_deleted = FALSE
+            ''', (post_id,))
             post = cursor.fetchone()
-            if post and isinstance(post['created_at'], datetime.datetime):
-                post['created_at'] = (post['created_at'] + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
+
+            if post:
+                # 조회수 증가
+                cursor.execute('UPDATE posts SET views = views + 1 WHERE id = %s', (post_id,))
+                conn.commit()
+
+                if isinstance(post['created_at'], datetime.datetime):
+                    post['created_at'] = (post['created_at'] + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
+                
+                # [권한] 현재 접속자가 작성자인지 확인 (프론트엔드 버튼 노출용)
+                current_user_id = session.get('user_id')
+                post['is_owner'] = (current_user_id == post['user_id'])
+            
+            # 댓글 가져오기
             cursor.execute('''SELECT c.*, u.username FROM comments c JOIN users u ON c.user_id = u.id WHERE c.post_id = %s ORDER BY c.id ASC''', (post_id,))
             comments = cursor.fetchall()
             for c in comments:
                 if isinstance(c['created_at'], datetime.datetime):
                     c['created_at'] = (c['created_at'] + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
+        
         return jsonify({'post': post, 'comments': comments})
+    finally:
+        conn.close()
+
+# ---------------------------------------------------------
+# [기능 추가] 게시글 수정 API
+# ---------------------------------------------------------
+@app.route('/api/post/edit', methods=['POST'])
+def edit_post():
+    if 'user_id' not in session: return jsonify({'result': 'fail', 'msg': '로그인이 필요합니다.'})
+
+    post_id = request.form['post_id']
+    title = request.form['title']
+    content = request.form['content']
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cursor:
+            # 작성자 본인 확인
+            cursor.execute('SELECT user_id FROM posts WHERE id = %s', (post_id,))
+            post = cursor.fetchone()
+            
+            if not post or post['user_id'] != session['user_id']:
+                return jsonify({'result': 'fail', 'msg': '권한이 없습니다.'})
+
+            # 내용 업데이트
+            cursor.execute('UPDATE posts SET title = %s, content = %s WHERE id = %s', 
+                           (title, content, post_id))
+        conn.commit()
+        return jsonify({'result': 'success'})
+    finally:
+        conn.close()
+
+# ---------------------------------------------------------
+# [기능 추가] 게시글 삭제 API (Soft Delete)
+# ---------------------------------------------------------
+@app.route('/api/post/delete', methods=['POST'])
+def delete_post():
+    if 'user_id' not in session: return jsonify({'result': 'fail', 'msg': '로그인이 필요합니다.'})
+
+    post_id = request.form['post_id']
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute('SELECT user_id FROM posts WHERE id = %s', (post_id,))
+            post = cursor.fetchone()
+            
+            if not post: return jsonify({'result': 'fail', 'msg': '게시글이 없습니다.'})
+            if post['user_id'] != session['user_id']:
+                return jsonify({'result': 'fail', 'msg': '작성자만 삭제할 수 있습니다.'})
+
+            # [Soft Delete] 실제로 지우지 않고 플래그만 변경
+            cursor.execute('UPDATE posts SET is_deleted = TRUE WHERE id = %s', (post_id,))
+        conn.commit()
+        return jsonify({'result': 'success'})
     finally:
         conn.close()
 
